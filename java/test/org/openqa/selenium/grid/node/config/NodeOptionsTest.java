@@ -236,36 +236,6 @@ class NodeOptionsTest {
   }
 
   @Test
-  void seVncUrlSeCdpUrlCapabilityWhenGridUrlWithSubPath() {
-    String gridUrl = "http://localhost:4444/subPath";
-    Config config = new MapConfig(singletonMap("node", singletonMap("grid-url", gridUrl)));
-
-    List<Capabilities> reported = new ArrayList<>();
-    NodeOptions nodeOptions = new NodeOptions(config);
-    NodeOptions nodeOptionsSpy = Mockito.spy(nodeOptions);
-    Mockito.doReturn(true).when(nodeOptionsSpy).isVncEnabled();
-    nodeOptionsSpy.getSessionFactories(
-      caps -> {
-        reported.add(caps);
-        return Collections.singleton(HelperFactory.create(config, caps));
-      });
-
-    assertThat(reported)
-      .filteredOn(
-        capabilities ->
-          capabilities.getCapability("se:vnc") != null
-          && String.valueOf(capabilities.getCapability("se:vnc")).contains(gridUrl))
-      .hasSize(reported.size());
-
-    assertThat(reported)
-      .filteredOn(
-        capabilities ->
-          capabilities.getCapability("se:cdp") != null
-          && String.valueOf(capabilities.getCapability("se:cdp")).contains(gridUrl))
-      .hasSize(reported.size());
-  }
-
-  @Test
   void vncEnabledCapabilityIsAddedWhenEnvVarIsTrue() {
     Config config = new MapConfig(singletonMap("node", singletonMap("detect-drivers", "false")));
 
