@@ -1,5 +1,0 @@
-version: "1"
-rules:
-  - base: trunk
-    upstream: SeleniumHQ:trunk
-    mergeMethod: hardreset
