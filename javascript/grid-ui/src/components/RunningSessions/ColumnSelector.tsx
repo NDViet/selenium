@@ -13,6 +13,7 @@ import {
   FormControlLabel,
   FormGroup,
   IconButton,
+  Tooltip,
   Typography
 } from '@mui/material'
 import { ViewColumn as ViewColumnIcon } from '@mui/icons-material'
@@ -90,13 +91,14 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
 
   return (
     <Box>
-      <IconButton
-        aria-label="select columns"
-        title="Select columns"
-        onClick={() => setOpen(true)}
-      >
-        <ViewColumnIcon />
-      </IconButton>
+      <Tooltip title="Select columns to display" arrow placement="top">
+        <IconButton
+          aria-label="select columns"
+          onClick={() => setOpen(true)}
+        >
+          <ViewColumnIcon />
+        </IconButton>
+      </Tooltip>
       
       <Dialog 
         open={open} 
