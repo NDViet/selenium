@@ -108,10 +108,11 @@ interface EnhancedTableProps {
     property: keyof SessionData) => void
   order: Order
   orderBy: string
+  headCells: HeadCell[]
 }
 
 function EnhancedTableHead (props: EnhancedTableProps): JSX.Element {
-  const { order, orderBy, onRequestSort } = props
+  const { order, orderBy, onRequestSort, headCells } = props
   const createSortHandler = (property: keyof SessionData) => (event: React.MouseEvent<unknown>) => {
     onRequestSort(event, property)
   }
@@ -361,6 +362,7 @@ function RunningSessions (props) {
                   order={order}
                   orderBy={orderBy}
                   onRequestSort={handleRequestSort}
+                  headCells={headCells}
                 />
                 <TableBody>
                   {stableSort(rows, getComparator(order, orderBy))
