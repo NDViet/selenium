@@ -142,38 +142,34 @@ public class LocalDistributor extends Distributor implements Closeable {
   private final SlotMatcher slotMatcher;
   private final Duration purgeNodesInterval;
 
+  private static final ThreadFactory createDaemonThreadFactory(String name) {
+    return r -> {
+      Thread thread = new Thread(r);
+      thread.setDaemon(true);
+      thread.setName(name);
+      return thread;
+    };
+  }
+
   private final ScheduledExecutorService newSessionService =
       Executors.newSingleThreadScheduledExecutor(
-          r -> {
-            Thread thread = new Thread(r);
-            thread.setDaemon(true);
-            thread.setName("Local Distributor - New Session Queue");
-            return thread;
-          });
+          createDaemonThreadFactory("Local Distributor - New Session Queue"));
 
   private final ScheduledExecutorService purgeDeadNodesService =
       Executors.newSingleThreadScheduledExecutor(
-          r -> {
-            Thread thread = new Thread(r);
-            thread.setDaemon(true);
-            thread.setName("Local Distributor - Purge Dead Nodes");
-            return thread;
-          });
+          createDaemonThreadFactory("Local Distributor - Purge Dead Nodes"));
 
   private final ScheduledExecutorService nodeHealthCheckService =
       Executors.newSingleThreadScheduledExecutor(
-          r -> {
-            Thread thread = new Thread(r);
-            thread.setDaemon(true);
-            thread.setName("Local Distributor - Node Health Check");
-            return thread;
-          });
+          createDaemonThreadFactory("Local Distributor - Node Health Check"));
 
   private final ExecutorService sessionCreatorExecutor;
 
   private final NewSessionQueue sessionQueue;
 
   private final boolean rejectUnsupportedCaps;
+  
+  private volatile Set<NodeStatus> cachedAvailableNodes = ImmutableSet.of();
 
   public LocalDistributor(
       Tracer tracer,
@@ -244,7 +240,7 @@ public class LocalDistributor extends Distributor implements Closeable {
 
     nodeHealthCheckService.scheduleAtFixedRate(
         runNodeHealthChecks(),
-        this.healthcheckInterval.toMillis(),
+        Math.max(2000, this.healthcheckInterval.toMillis()), // At least 2 seconds initial delay
         this.healthcheckInterval.toMillis(),
         TimeUnit.MILLISECONDS);
 
@@ -399,9 +395,8 @@ public class LocalDistributor extends Distributor implements Closeable {
         readLock.unlock();
       }
 
-      for (Runnable nodeHealthCheck : nodeHealthChecks.values()) {
-        GuardedRunnable.guard(nodeHealthCheck).run();
-      }
+      nodeHealthChecks.values().parallelStream()
+          .forEach(check -> GuardedRunnable.guard(check).run());
     };
   }
 
@@ -439,6 +434,8 @@ public class LocalDistributor extends Distributor implements Closeable {
           String.format("Health check result for %s was %s", nodeUri, availability));
       model.setAvailability(id, availability);
       model.updateHealthCheckCount(id, availability);
+      
+      cachedAvailableNodes = ImmutableSet.of();
     } finally {
       writeLock.unlock();
     }
@@ -471,6 +468,8 @@ public class LocalDistributor extends Distributor implements Closeable {
       Node node = nodes.remove(nodeId);
       model.remove(nodeId);
       allChecks.remove(nodeId);
+
+      cachedAvailableNodes = ImmutableSet.of();
 
       if (node instanceof RemoteNode) {
         ((RemoteNode) node).close();
@@ -507,17 +506,22 @@ public class LocalDistributor extends Distributor implements Closeable {
   }
 
   protected Set<NodeStatus> getAvailableNodes() {
-    Lock readLock = this.lock.readLock();
-    readLock.lock();
-    try {
-      return model.getSnapshot().stream()
-          .filter(
-              node ->
-                  !DOWN.equals(node.getAvailability()) && !DRAINING.equals(node.getAvailability()))
-          .collect(toImmutableSet());
-    } finally {
-      readLock.unlock();
+    Set<NodeStatus> nodes = cachedAvailableNodes;
+    if (nodes.isEmpty()) {
+      Lock readLock = this.lock.readLock();
+      readLock.lock();
+      try {
+        nodes = model.getSnapshot().stream()
+            .filter(
+                node ->
+                    !DOWN.equals(node.getAvailability()) && !DRAINING.equals(node.getAvailability()))
+            .collect(toImmutableSet());
+        cachedAvailableNodes = nodes;
+      } finally {
+        readLock.unlock();
+      }
     }
+    return nodes;
   }
 
   @Override
