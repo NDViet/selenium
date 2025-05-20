@@ -15,15 +15,71 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import { Box, Card, CardContent, Grid, Typography } from '@mui/material'
-import React from 'react'
+import { Box, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, Grid, IconButton, Typography, Button } from '@mui/material'
+import React, { useState, useRef } from 'react'
+import { Videocam as VideocamIcon } from '@mui/icons-material'
+import { useNavigate } from 'react-router-dom'
 import NodeDetailsDialog from './NodeDetailsDialog'
 import NodeLoad from './NodeLoad'
 import Stereotypes from './Stereotypes'
 import OsLogo from '../common/OsLogo'
+import LiveView from '../LiveView/LiveView'
+
+interface LiveViewProps {
+  url: string
+  scaleViewport?: boolean
+  onClose: () => void
+}
+
+function getVncUrl(session, origin) {
+  try {
+    const parsed = JSON.parse(session.capabilities)
+    let vnc = parsed['se:vnc'] ?? ''
+    if (vnc.length > 0) {
+      try {
+        const url = new URL(origin)
+        const vncUrl = new URL(vnc)
+        url.pathname = vncUrl.pathname
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+        return url.href
+      } catch (error) {
+        console.log(error)
+        return ''
+      }
+    }
+    return ''
+  } catch (e) {
+    return ''
+  }
+}
 
 function Node (props) {
-  const { node } = props
+  const { node, sessions = [], origin } = props
+  const [liveViewSessionId, setLiveViewSessionId] = useState('')
+  const liveViewRef = useRef<{ disconnect: () => void }>(null)
+  const navigate = useNavigate()
+  
+  const vncSession = sessions.find(session => {
+    try {
+      const capabilities = JSON.parse(session.capabilities)
+      return capabilities['se:vnc'] !== undefined && capabilities['se:vnc'] !== ''
+    } catch (e) {
+      return false
+    }
+  })
+  
+  const handleLiveViewIconClick = () => {
+    if (vncSession) {
+      setLiveViewSessionId(vncSession.id)
+    }
+  }
+  
+  const handleDialogClose = () => {
+    if (liveViewRef.current) {
+      liveViewRef.current.disconnect()
+    }
+    setLiveViewSessionId('')
+  }
   const getCardStyle = (status: string) => ({
     height: '100%',
     flexGrow: 1,
@@ -32,44 +88,83 @@ function Node (props) {
   })
 
   return (
-    <Card sx={getCardStyle(node.status)}>
-      <CardContent sx={{ pl: 2, pr: 1 }}>
-        <Grid
-          container
-          justifyContent="space-between"
-          spacing={1}
+    <>
+      <Card sx={getCardStyle(node.status)}>
+        <CardContent sx={{ pl: 2, pr: 1 }}>
+          <Grid
+            container
+            justifyContent="space-between"
+            spacing={1}
+          >
+            <Grid item xs={10}>
+              <Typography
+                color="textPrimary"
+                gutterBottom
+                variant="h6"
+              >
+                <Box fontWeight="fontWeightBold" mr={1} display="inline">
+                  URI:
+                </Box>
+                {node.uri}
+              </Typography>
+            </Grid>
+            <Grid item xs={2}>
+              <Typography
+                color="textPrimary"
+                gutterBottom
+                variant="h6"
+              >
+                <OsLogo osName={node.osInfo.name}/>
+                <NodeDetailsDialog node={node}/>
+                {vncSession && (
+                  <IconButton sx={{ bm: 1 }} onClick={handleLiveViewIconClick} size='large'>
+                    <VideocamIcon />
+                  </IconButton>
+                )}
+              </Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <Stereotypes stereotypes={node.slotStereotypes}/>
+            </Grid>
+            <Grid item xs={12}>
+              <NodeLoad node={node}/>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+      {vncSession && liveViewSessionId && (
+        <Dialog
+          onClose={handleDialogClose}
+          aria-labelledby='live-view-dialog'
+          open={liveViewSessionId === vncSession.id}
+          fullWidth
+          maxWidth='xl'
+          fullScreen
         >
-          <Grid item xs={10}>
-            <Typography
-              color="textPrimary"
-              gutterBottom
-              variant="h6"
-            >
-              <Box fontWeight="fontWeightBold" mr={1} display="inline">
-                URI:
+          <DialogTitle id='live-view-dialog'>
+            <Typography gutterBottom component='span' sx={{ paddingX: '10px' }}>
+              <Box fontWeight='fontWeightBold' mr={1} display='inline'>
+                Node Session Live View
               </Box>
               {node.uri}
             </Typography>
-          </Grid>
-          <Grid item xs={2}>
-            <Typography
-              color="textPrimary"
-              gutterBottom
-              variant="h6"
-            >
-              <OsLogo osName={node.osInfo.name}/>
-              <NodeDetailsDialog node={node}/>
-            </Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Stereotypes stereotypes={node.slotStereotypes}/>
-          </Grid>
-          <Grid item xs={12}>
-            <NodeLoad node={node}/>
-          </Grid>
-        </Grid>
-      </CardContent>
-    </Card>
+          </DialogTitle>
+          <DialogContent dividers sx={{ height: '600px' }}>
+            <LiveView
+              ref={liveViewRef as any}
+              url={getVncUrl(vncSession, origin)}
+              scaleViewport
+              onClose={handleDialogClose}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleDialogClose} color='primary' variant='contained'>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+    </>
   )
 }
 
