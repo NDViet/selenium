@@ -38,7 +38,16 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   }, [selectedColumns])
 
   useEffect(() => {
-    const allKeys = new Set<string>()
+    let allKeys = new Set<string>()
+    try {
+      const savedKeys = localStorage.getItem('selenium-grid-all-capability-keys')
+      if (savedKeys) {
+        const parsedKeys = JSON.parse(savedKeys)
+        parsedKeys.forEach((key: string) => allKeys.add(key))
+      }
+    } catch (e) {
+      console.error('Error loading saved capability keys:', e)
+    }
     
     sessions.forEach(session => {
       try {
@@ -59,7 +68,10 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
       }
     })
     
-    setAvailableColumns(Array.from(allKeys).sort())
+    const keysArray = Array.from(allKeys).sort()
+    localStorage.setItem('selenium-grid-all-capability-keys', JSON.stringify(keysArray))
+    
+    setAvailableColumns(keysArray)
   }, [sessions])
 
   const handleToggle = (column: string) => {
