@@ -80,8 +80,12 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
     setOpen(false)
   }
   
-  const handleReset = () => {
-    setLocalSelectedColumns([])
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setLocalSelectedColumns([...availableColumns])
+    } else {
+      setLocalSelectedColumns([])
+    }
   }
 
   return (
@@ -108,6 +112,16 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
             Select capability fields to display as additional columns:
           </Typography>
           <FormGroup>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={localSelectedColumns.length === availableColumns.length && availableColumns.length > 0}
+                  indeterminate={localSelectedColumns.length > 0 && localSelectedColumns.length < availableColumns.length}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                />
+              }
+              label={<Typography fontWeight="bold">Select All / Unselect All</Typography>}
+            />
             {availableColumns.map(column => (
               <FormControlLabel
                 key={column}
@@ -124,11 +138,6 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose}>Cancel</Button>
-          {localSelectedColumns.length > 0 && (
-            <Button onClick={handleReset} color="secondary">
-              Reset All
-            </Button>
-          )}
           <Button onClick={handleSave} variant="contained" color="primary">
             Apply
           </Button>
