@@ -33,6 +33,7 @@ interface SessionData {
   slot: any
   vnc: string
   name: string
+  [key: string]: any // Add this to support dynamic columns
 }
 
 export function createSessionData (
