@@ -79,6 +79,10 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
     onColumnSelectionChange(localSelectedColumns)
     setOpen(false)
   }
+  
+  const handleReset = () => {
+    setLocalSelectedColumns([])
+  }
 
   return (
     <Box>
@@ -120,6 +124,11 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose}>Cancel</Button>
+          {localSelectedColumns.length > 0 && (
+            <Button onClick={handleReset} color="secondary">
+              Reset All
+            </Button>
+          )}
           <Button onClick={handleSave} variant="contained" color="primary">
             Apply
           </Button>
