@@ -183,7 +183,15 @@ function RunningSessions (props) {
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [searchFilter, setSearchFilter] = useState('')
   const [searchBarHelpOpen, setSearchBarHelpOpen] = useState(false)
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => {
+    try {
+      const savedColumns = localStorage.getItem('selenium-grid-selected-columns')
+      return savedColumns ? JSON.parse(savedColumns) : []
+    } catch (e) {
+      console.error('Error loading saved columns:', e)
+      return []
+    }
+  })
   const [headCells, setHeadCells] = useState<HeadCell[]>(fixedHeadCells)
   const liveViewRef = useRef(null)
   const navigate = useNavigate()
@@ -341,7 +349,10 @@ function RunningSessions (props) {
                 <ColumnSelector 
                   sessions={sessions}
                   selectedColumns={selectedColumns}
-                  onColumnSelectionChange={setSelectedColumns}
+                  onColumnSelectionChange={(columns) => {
+                    setSelectedColumns(columns)
+                    localStorage.setItem('selenium-grid-selected-columns', JSON.stringify(columns))
+                  }}
                 />
                 <RunningSessionsSearchBar
                   searchFilter={searchFilter}

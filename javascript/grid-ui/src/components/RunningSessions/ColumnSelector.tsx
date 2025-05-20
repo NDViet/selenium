@@ -31,6 +31,10 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   const [open, setOpen] = useState(false)
   const [availableColumns, setAvailableColumns] = useState<string[]>([])
   const [localSelectedColumns, setLocalSelectedColumns] = useState<string[]>(selectedColumns)
+  
+  useEffect(() => {
+    setLocalSelectedColumns(selectedColumns)
+  }, [selectedColumns])
 
   useEffect(() => {
     const allKeys = new Set<string>()
