@@ -116,15 +116,17 @@ function Node (props) {
               >
                 <OsLogo osName={node.osInfo.name}/>
                 <NodeDetailsDialog node={node}/>
-                {vncSession && (
-                  <IconButton sx={{ bm: 1 }} onClick={handleLiveViewIconClick} size='large'>
-                    <VideocamIcon />
-                  </IconButton>
-                )}
               </Typography>
             </Grid>
             <Grid item xs={12}>
-              <Stereotypes stereotypes={node.slotStereotypes}/>
+              <Box display="flex" alignItems="center">
+                <Stereotypes stereotypes={node.slotStereotypes}/>
+                {vncSession && (
+                  <IconButton sx={{ ml: 1 }} onClick={handleLiveViewIconClick} size='medium' color="primary">
+                    <VideocamIcon />
+                  </IconButton>
+                )}
+              </Box>
             </Grid>
             <Grid item xs={12}>
               <NodeLoad node={node}/>
