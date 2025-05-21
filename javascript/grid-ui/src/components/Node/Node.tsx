@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import { Box, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, Grid, IconButton, Typography, Button } from '@mui/material'
+import { Box, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, Grid, IconButton, Typography, Button, keyframes, styled } from '@mui/material'
 import React, { useState, useRef } from 'react'
 import { Videocam as VideocamIcon } from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
@@ -24,6 +24,35 @@ import NodeLoad from './NodeLoad'
 import Stereotypes from './Stereotypes'
 import OsLogo from '../common/OsLogo'
 import LiveView from '../LiveView/LiveView'
+
+const pulse = keyframes`
+  0% {
+    box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(25, 118, 210, 0);
+    transform: scale(1.05);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(25, 118, 210, 0);
+    transform: scale(1);
+  }
+`
+
+const LiveIconButton = styled(IconButton)(({ theme }) => ({
+  marginLeft: theme.spacing(1),
+  position: 'relative',
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: '50%',
+    animation: `${pulse} 2s infinite`,
+    zIndex: 0
+  }
+}))
 
 interface LiveViewProps {
   url: string
@@ -122,9 +151,9 @@ function Node (props) {
               <Box display="flex" alignItems="center">
                 <Stereotypes stereotypes={node.slotStereotypes}/>
                 {vncSession && (
-                  <IconButton sx={{ ml: 1 }} onClick={handleLiveViewIconClick} size='medium' color="primary">
+                  <LiveIconButton onClick={handleLiveViewIconClick} size='medium' color="primary">
                     <VideocamIcon />
-                  </IconButton>
+                  </LiveIconButton>
                 )}
               </Box>
             </Grid>
