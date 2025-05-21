@@ -129,19 +129,17 @@ java_import(
 # Target for running Jest tests on Grid UI components
 jest_test(
     name = "jest_tests",
-    srcs = glob(["src/tests/components/*.tsx"]),
-    jest_config = ":jest.config.js",
-    deps = [
-        ":node_modules/@testing-library/jest-dom",
-        ":node_modules/@testing-library/react",
-        ":node_modules/@testing-library/user-event",
-        ":node_modules/react",
-        ":node_modules/react-dom",
-        ":node_modules/react-router-dom",
-        ":node_modules/@mui/material",
-        ":node_modules/@mui/icons-material",
-        ":transpile_ts",
-    ],
+    data = glob(["src/tests/components/*.tsx"]) + [
+        "src/setupTests.tsx",
+        "jest.config.js",
+        # Include other source files that tests depend on
+        "src/components/RunningSessions/ColumnSelector.tsx",
+        "src/components/RunningSessions/RunningSessions.tsx",
+        "src/components/Node/Node.tsx",
+        "src/models/session-data.ts",
+    ] + glob(["src/components/**/*.tsx"]) + glob(["src/models/*.ts"]),
+    config = ":jest.config.js",
+    node_modules = ":node_modules",
 )
 
 copy_to_bin(
