@@ -152,7 +152,7 @@ function Node (props) {
                 <Stereotypes stereotypes={node.slotStereotypes}/>
                 {vncSession && (
                   <LiveIconButton onClick={handleLiveViewIconClick} size='medium' color="primary">
-                    <VideocamIcon />
+                    <VideocamIcon data-testid="VideocamIcon" />
                   </LiveIconButton>
                 )}
               </Box>

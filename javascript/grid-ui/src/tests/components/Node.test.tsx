@@ -22,6 +22,7 @@ import OsInfo from '../../models/os-info'
 import StereotypeInfo from '../../models/stereotype-info'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { BrowserRouter } from 'react-router-dom'
 
 const osInfo: OsInfo = {
   name: 'Mac OS X',
@@ -49,8 +50,29 @@ const node: NodeInfo = {
   slotStereotypes: [slotStereotype]
 }
 
+const sessionWithVnc = {
+  id: 'session1',
+  capabilities: JSON.stringify({
+    'browserName': 'chrome',
+    'se:vnc': 'ws://localhost:4444/session/123/vnc'
+  }),
+  nodeId: node.id
+}
+
+const sessionWithoutVnc = {
+  id: 'session2',
+  capabilities: JSON.stringify({
+    'browserName': 'chrome'
+  }),
+  nodeId: node.id
+}
+
 it('renders basic node information', () => {
-  render(<Node node={node} />)
+  render(
+    <BrowserRouter>
+      <Node node={node} sessions={[]} origin="http://localhost:4444" />
+    </BrowserRouter>
+  )
   expect(screen.getByText(node.uri)).toBeInTheDocument()
   expect(
     screen.getByText(`Sessions: ${node.sessionCount}`)).toBeInTheDocument()
@@ -59,7 +81,11 @@ it('renders basic node information', () => {
 })
 
 it('renders detailed node information', async () => {
-  render(<Node node={node}/>)
+  render(
+    <BrowserRouter>
+      <Node node={node} sessions={[]} origin="http://localhost:4444" />
+    </BrowserRouter>
+  )
   const user = userEvent.setup()
   await user.click(screen.getByRole('button'))
   expect(screen.getByText(`Node Id: ${node.id}`)).toBeInTheDocument()
@@ -69,4 +95,33 @@ it('renders detailed node information', async () => {
   expect(screen.getByText(`OS Name: ${node.osInfo.name}`)).toBeInTheDocument()
   expect(
     screen.getByText(`OS Version: ${node.osInfo.version}`)).toBeInTheDocument()
+})
+
+it('does not show LiveView icon when no VNC sessions are available', () => {
+  render(
+    <BrowserRouter>
+      <Node node={node} sessions={[sessionWithoutVnc]} origin="http://localhost:4444" />
+    </BrowserRouter>
+  )
+  expect(screen.queryByTestId('VideocamIcon')).not.toBeInTheDocument()
+})
+
+it('shows LiveView icon when VNC sessions are available', () => {
+  render(
+    <BrowserRouter>
+      <Node node={node} sessions={[sessionWithVnc]} origin="http://localhost:4444" />
+    </BrowserRouter>
+  )
+  expect(screen.getByTestId('VideocamIcon')).toBeInTheDocument()
+})
+
+it('opens LiveView dialog when icon is clicked', async () => {
+  render(
+    <BrowserRouter>
+      <Node node={node} sessions={[sessionWithVnc]} origin="http://localhost:4444" />
+    </BrowserRouter>
+  )
+  const user = userEvent.setup()
+  await user.click(screen.getByTestId('VideocamIcon'))
+  expect(screen.getByText('Node Session Live View')).toBeInTheDocument()
 })
