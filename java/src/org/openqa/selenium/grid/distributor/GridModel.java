@@ -400,10 +400,13 @@ public class GridModel {
             Slot released =
                 new Slot(slot.getId(), slot.getStereotype(), slot.getLastStarted(), null);
             amend(node.getAvailability(), node, released);
+            
+            LOG.info(String.format("Released slot for session %s in node %s", id, node.getNodeId()));
             return;
           }
         }
       }
+      LOG.warning(String.format("Attempted to release session %s but no matching slot was found", id));
     } finally {
       writeLock.unlock();
     }

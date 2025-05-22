@@ -335,17 +335,36 @@ public class LocalNode extends Node implements Closeable {
           span.addEvent(String.format("Stopping the session %s on demand", id), attributeMap);
         }
         if (notification.wasEvicted()) {
+          // Attempt to stop the session via HTTP request
           try {
+            LOG.log(Level.INFO, String.format("Sending DELETE request for session %s", id));
             slot.execute(new HttpRequest(DELETE, "/session/" + id));
+            LOG.log(Level.INFO, String.format("Successfully sent DELETE request for session %s", id));
           } catch (Exception e) {
             LOG.log(
                 Level.WARNING, String.format("Exception while trying to stop session %s", id), e);
             span.setStatus(Status.INTERNAL);
             span.addEvent(
                 String.format("Exception while trying to stop session %s", id), attributeMap);
+            
+            try {
+              LOG.log(Level.INFO, String.format("Attempting additional cleanup for session %s after HTTP request failure", id));
+              if (downloadsTempFileSystem.getIfPresent(id) != null) {
+                downloadsTempFileSystem.invalidate(id);
+                LOG.log(Level.INFO, String.format("Invalidated downloads temp filesystem for session %s", id));
+              }
+              
+              if (uploadsTempFileSystem.getIfPresent(id) != null) {
+                uploadsTempFileSystem.invalidate(id);
+                LOG.log(Level.INFO, String.format("Invalidated uploads temp filesystem for session %s", id));
+              }
+            } catch (Exception cleanupEx) {
+              LOG.log(Level.WARNING, String.format("Failed to clean up resources for session %s", id), cleanupEx);
+            }
           }
         }
         // Attempt to stop the session
+        LOG.log(Level.INFO, String.format("Calling slot.stop() for session %s", id));
         slot.stop();
         // Decrement pending sessions if Node is draining
         if (this.isDraining()) {
@@ -846,19 +865,30 @@ public class LocalNode extends Node implements Closeable {
   public void stop(SessionId id) throws NoSuchSessionException {
     Require.nonNull("Session ID", id);
 
+    LOG.info(String.format("Stopping session %s and cleaning up resources", id));
+    
     if (downloadsTempFileSystem.getIfPresent(id) != null) {
+      LOG.fine(String.format("Invalidating downloads temp filesystem for session %s", id));
       downloadsTempFileSystem.invalidate(id);
     }
+    
     if (uploadsTempFileSystem.getIfPresent(id) != null) {
+      LOG.fine(String.format("Invalidating uploads temp filesystem for session %s", id));
       uploadsTempFileSystem.invalidate(id);
     }
 
     SessionSlot slot = currentSessions.getIfPresent(id);
     if (slot == null) {
+      LOG.warning(String.format("Cannot find session with id: %s", id));
       throw new NoSuchSessionException("Cannot find session with id: " + id);
     }
 
+    LOG.fine(String.format("Invalidating session %s in current sessions cache", id));
     currentSessions.invalidate(id);
+    
+    currentSessions.cleanUp();
+    
+    LOG.info(String.format("Session %s stopped and resources cleaned up", id));
   }
 
   private void stopAllSessions() {

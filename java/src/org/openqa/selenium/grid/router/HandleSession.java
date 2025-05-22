@@ -112,6 +112,8 @@ class HandleSession implements HttpHandler, Closeable {
     Runnable cleanUpHttpClients =
         () -> {
           Instant staleBefore = Instant.now().minus(2, ChronoUnit.MINUTES);
+          LOG.fine("Starting HTTP client cleanup, checking for clients unused since " + staleBefore);
+          int initialSize = httpClients.size();
           Iterator<CacheEntry> iterator = httpClients.values().iterator();
 
           while (iterator.hasNext()) {
@@ -119,10 +121,10 @@ class HandleSession implements HttpHandler, Closeable {
 
             if (entry.inUse.get() != 0) {
               // the client is currently in use
-              return;
+              continue;
             } else if (!entry.lastUse.isBefore(staleBefore)) {
               // the client was recently used
-              return;
+              continue;
             } else {
               // the client has not been used for a while, remove it from the cache
               iterator.remove();
@@ -133,6 +135,11 @@ class HandleSession implements HttpHandler, Closeable {
                 LOG.log(Level.WARNING, "failed to close a stale httpclient", ex);
               }
             }
+          }
+          int finalSize = httpClients.size();
+          if (initialSize > finalSize) {
+            LOG.info(String.format("HTTP client cleanup: removed %d stale clients, %d remaining", 
+                initialSize - finalSize, finalSize));
           }
         };
 
@@ -241,6 +248,7 @@ class HandleSession implements HttpHandler, Closeable {
           } catch (Throwable t) {
             // ensure we do not keep the http client when an unexpected throwable is raised
             cacheEntry.inUse.decrementAndGet();
+            LOG.warning(String.format("Failed to create proxy handler: %s", t.getMessage()));
             throw t;
           }
         });

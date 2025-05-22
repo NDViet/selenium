@@ -168,6 +168,15 @@ public class LocalDistributor extends Distributor implements Closeable {
             thread.setName("Local Distributor - Node Health Check");
             return thread;
           });
+          
+  private final ScheduledExecutorService memoryMonitorService =
+      Executors.newSingleThreadScheduledExecutor(
+          r -> {
+            Thread thread = new Thread(r);
+            thread.setDaemon(true);
+            thread.setName("Local Distributor - Memory Monitor");
+            return thread;
+          });
 
   private final ExecutorService sessionCreatorExecutor;
 
@@ -247,6 +256,21 @@ public class LocalDistributor extends Distributor implements Closeable {
         this.healthcheckInterval.toMillis(),
         this.healthcheckInterval.toMillis(),
         TimeUnit.MILLISECONDS);
+        
+    memoryMonitorService.scheduleAtFixedRate(
+        () -> {
+          Runtime runtime = Runtime.getRuntime();
+          long totalMemory = runtime.totalMemory();
+          long freeMemory = runtime.freeMemory();
+          long usedMemory = totalMemory - freeMemory;
+          
+          LOG.info(String.format(
+              "Memory usage - Total: %d MB, Used: %d MB, Free: %d MB", 
+              totalMemory / (1024 * 1024), 
+              usedMemory / (1024 * 1024), 
+              freeMemory / (1024 * 1024)));
+        },
+        1, 5, TimeUnit.MINUTES);
 
     // if sessionRequestRetryInterval is 0, we will schedule session creation every 10 millis
     long period =
@@ -603,8 +627,12 @@ public class LocalDistributor extends Distributor implements Closeable {
 
           return Either.right(response);
         } catch (SessionNotCreatedException e) {
+          LOG.warning(String.format("Failed to start session for request %s: %s", 
+              request.getRequestId(), e.getMessage()));
           model.setSession(selectedSlot, null);
           lastFailure = e;
+          
+          Runtime.getRuntime().gc();
         }
       }
 
@@ -763,11 +791,34 @@ public class LocalDistributor extends Distributor implements Closeable {
 
   @Override
   public void close() {
-    LOG.info("Shutting down Distributor executor service");
+    LOG.info("Shutting down Distributor executor services and releasing resources");
+    
+    Runtime runtime = Runtime.getRuntime();
+    long totalMemory = runtime.totalMemory();
+    long freeMemory = runtime.freeMemory();
+    long usedMemory = totalMemory - freeMemory;
+    LOG.info(String.format(
+        "Memory usage before shutdown - Total: %d MB, Used: %d MB, Free: %d MB", 
+        totalMemory / (1024 * 1024), 
+        usedMemory / (1024 * 1024), 
+        freeMemory / (1024 * 1024)));
+    
     shutdownGracefully("Local Distributor - Purge Dead Nodes", purgeDeadNodesService);
     shutdownGracefully("Local Distributor - Node Health Check", nodeHealthCheckService);
+    shutdownGracefully("Local Distributor - Memory Monitor", memoryMonitorService);
     shutdownGracefully("Local Distributor - New Session Queue", newSessionService);
     shutdownGracefully("Local Distributor - Session Creation", sessionCreatorExecutor);
+    
+    Lock writeLock = lock.writeLock();
+    writeLock.lock();
+    try {
+      nodes.clear();
+      allChecks.clear();
+    } finally {
+      writeLock.unlock();
+    }
+    
+    LOG.info("Distributor shutdown complete");
   }
 
   private class NewSessionRunnable implements Runnable {

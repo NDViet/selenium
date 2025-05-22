@@ -38,6 +38,9 @@ import java.net.URL;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -184,10 +187,50 @@ public class RouterServer extends TemplateGridServerCommand {
     // Since k8s doesn't make it easy to do an authenticated liveness probe, allow unauthenticated
     // access to it.
     Routable routeWithLiveness = Route.combine(route, get("/readyz").to(() -> readinessCheck));
+    
+    ScheduledExecutorService memoryMonitorService =
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              Thread thread = new Thread(r);
+              thread.setDaemon(true);
+              thread.setName("Router Memory Monitor");
+              return thread;
+            });
+            
+    memoryMonitorService.scheduleAtFixedRate(
+        () -> {
+          Runtime runtime = Runtime.getRuntime();
+          long totalMemory = runtime.totalMemory();
+          long freeMemory = runtime.freeMemory();
+          long usedMemory = totalMemory - freeMemory;
+          
+          LOG.info(String.format(
+              "Memory usage - Total: %d MB, Used: %d MB, Free: %d MB", 
+              totalMemory / (1024 * 1024), 
+              usedMemory / (1024 * 1024), 
+              freeMemory / (1024 * 1024)));
+        },
+        1, 5, TimeUnit.MINUTES);
 
     return new Handlers(routeWithLiveness, new ProxyWebsocketsIntoGrid(clientFactory, sessions)) {
+      private final ScheduledExecutorService memoryMonitor = memoryMonitorService;
       @Override
       public void close() {
+        LOG.info("Shutting down Router and releasing resources");
+        
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        LOG.info(String.format(
+            "Memory usage before shutdown - Total: %d MB, Used: %d MB, Free: %d MB", 
+            totalMemory / (1024 * 1024), 
+            usedMemory / (1024 * 1024), 
+            freeMemory / (1024 * 1024)));
+        
+        LOG.info("Shutting down Router Memory Monitor");
+        memoryMonitor.shutdownNow();
+        
         router.close();
         if (sessions instanceof Closeable) {
           try {
@@ -196,6 +239,8 @@ public class RouterServer extends TemplateGridServerCommand {
             throw new UncheckedIOException(e);
           }
         }
+        
+        LOG.info("Router shutdown complete");
       }
     };
   }
