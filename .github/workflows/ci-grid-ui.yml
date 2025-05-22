@@ -31,7 +31,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: javascript/grid-ui
-        run: npm ci
+        run: npm install
       
       - name: Run Jest tests
         working-directory: javascript/grid-ui
