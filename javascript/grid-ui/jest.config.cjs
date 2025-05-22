@@ -13,5 +13,12 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(pretty-ms|parse-ms)/)'
   ],
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx']
+  setupFilesAfterEnv: [
+    '<rootDir>/src/setupTests.tsx',
+    '<rootDir>/src/tests/setup-jest.js'
+  ],
+  // Suppress act() warnings from Material-UI components
+  testEnvironmentOptions: {
+    suppressConsole: true
+  }
 };
