@@ -3,8 +3,8 @@ module.exports = {
   testEnvironment: 'jsdom',
   testMatch: ['<rootDir>/src/tests/**/*.test.tsx'],
   transform: {
-    '^.+\\.(ts|tsx)$': 'babel-jest',
-    '^.+\\.(js|jsx)$': 'babel-jest'
+    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(js|jsx)$': 'ts-jest'
   },
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': '<rootDir>/src/tests/__mocks__/styleMock.js',
