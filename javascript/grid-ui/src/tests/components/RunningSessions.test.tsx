@@ -18,7 +18,7 @@
 import * as React from 'react'
 import RunningSessions from '../../components/RunningSessions/RunningSessions'
 import SessionInfo from '../../models/session-info'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '../utils/test-utils'
 import userEvent from '@testing-library/user-event'
 import { createSessionData } from '../../models/session-data'
 
