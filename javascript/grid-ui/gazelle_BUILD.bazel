@@ -1,0 +1,14 @@
+load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
+
+# This file is used as a template by Gazelle to generate BUILD.bazel files
+# for Jest tests in the Grid UI project.
+
+jest_test(
+    name = "jest_tests",
+    data = glob(["src/tests/components/*.tsx"]) + [
+        "src/setupTests.tsx",
+        "jest.config.js",
+    ] + glob(["src/components/**/*.tsx"]) + glob(["src/models/*.ts"]),
+    config = ":jest.config.js",
+    node_modules = ":node_modules",
+)

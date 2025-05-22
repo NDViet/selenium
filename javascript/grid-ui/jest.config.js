@@ -1,7 +1,7 @@
 //
 //
 
-module.exports = {
+export default {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
   testMatch: ['**/*.test.tsx'],

@@ -1,0 +1,6 @@
+language: nodejs
+test_files_suffix: 
+  - .test.tsx
+  - .test.ts
+  - .test.jsx
+  - .test.js
