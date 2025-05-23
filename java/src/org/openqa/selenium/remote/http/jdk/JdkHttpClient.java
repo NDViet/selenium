@@ -36,9 +36,12 @@ import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -77,6 +80,7 @@ public class JdkHttpClient implements HttpClient {
   private final HttpHandler handler;
   private java.net.http.HttpClient client;
   private final List<WebSocket> websockets;
+  private final Set<WebSocket> closedWebsockets;
   private final ExecutorService executorService;
   private final Duration readTimeout;
   private final Duration connectTimeout;
@@ -88,6 +92,7 @@ public class JdkHttpClient implements HttpClient {
     this.readTimeout = config.readTimeout();
     this.connectTimeout = config.connectionTimeout();
     this.websockets = new ArrayList<>();
+    this.closedWebsockets = Collections.synchronizedSet(new HashSet<>());
     this.handler = config.filter().andFinally(this::execute0);
 
     String poolName = "JdkHttpClient-" + POOL_COUNTER.getAndIncrement();
@@ -342,6 +347,7 @@ public class JdkHttpClient implements HttpClient {
           public void close() {
             LOG.fine("Closing websocket");
             send(new CloseMessage(1000, "WebDriver closing socket"));
+            closedWebsockets.add(this);
           }
         };
     websockets.add(websocket);
@@ -521,6 +527,12 @@ public class JdkHttpClient implements HttpClient {
       } catch (Exception e) {
         LOG.log(Level.WARNING, "failed to close the websocket: " + websocket, e);
       }
+    }
+
+    if (!closedWebsockets.isEmpty()) {
+      LOG.fine("Removing " + closedWebsockets.size() + " closed websockets from the list");
+      websockets.removeAll(closedWebsockets);
+      closedWebsockets.clear();
     }
 
     if (this.client instanceof AutoCloseable) {
