@@ -97,23 +97,50 @@ const mockSessionsData = {
       {
         id: 'session1',
         nodeId: 'node1',
+        nodeUri: 'http://192.168.1.10:4444',
+        uri: 'http://192.168.1.10:4444/session/session1',
         capabilities: JSON.stringify({
           browserName: 'chrome',
           browserVersion: '88.0',
           platformName: 'linux',
           'se:vnc': 'ws://192.168.1.10:5900/websockify'
-        })
+        }),
+        startTime: '2023-01-01T10:00:00.000Z',
+        sessionDurationMillis: 60000,
+        slot: {
+          id: 'slot1',
+          stereotype: JSON.stringify({
+            browserName: 'chrome',
+            browserVersion: '88.0',
+            platformName: 'linux'
+          }),
+          lastStarted: '2023-01-01T10:00:00.000Z'
+        }
       },
       {
         id: 'session2',
         nodeId: 'node2',
+        nodeUri: 'http://192.168.1.11:4444',
+        uri: 'http://192.168.1.11:4444/session/session2',
         capabilities: JSON.stringify({
           browserName: 'firefox',
           browserVersion: '78.0',
           platformName: 'windows'
-        })
+        }),
+        startTime: '2023-01-01T10:05:00.000Z',
+        sessionDurationMillis: 30000,
+        slot: {
+          id: 'slot2',
+          stereotype: JSON.stringify({
+            browserName: 'firefox',
+            browserVersion: '78.0',
+            platformName: 'windows'
+          }),
+          lastStarted: '2023-01-01T10:05:00.000Z'
+        }
       }
-    ]
+    ],
+    sessionQueueRequests: 0
   }
 }
 
@@ -295,6 +322,14 @@ describe('Overview component', () => {
           query: NODES_QUERY
         },
         error: new Error('Network error')
+      },
+      {
+        request: {
+          query: GRID_SESSIONS_QUERY
+        },
+        result: {
+          data: mockSessionsData
+        }
       }
     ]
 
@@ -318,6 +353,14 @@ describe('Overview component', () => {
         },
         result: {
           data: { nodesInfo: { nodes: [] } }
+        }
+      },
+      {
+        request: {
+          query: GRID_SESSIONS_QUERY
+        },
+        result: {
+          data: mockSessionsData
         }
       }
     ]
