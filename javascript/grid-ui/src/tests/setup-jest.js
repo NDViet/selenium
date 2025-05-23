@@ -20,5 +20,19 @@ console.error = (...args) => {
   if (/Warning.*not wrapped in act/.test(args[0])) {
     return;
   }
+  if (args[0] && typeof args[0] === 'string' && args[0].includes('An error occurred! For more details')) {
+    return;
+  }
+  if (args[0] && typeof args[0] === 'string' && args[0].includes('Cache data may be lost when replacing')) {
+    return;
+  }
   originalError.call(console, ...args);
+};
+
+const originalLog = console.log;
+console.log = (...args) => {
+  if (args[0] instanceof Error && args[0].message && args[0].message.includes('Invalid URL')) {
+    return;
+  }
+  originalLog.call(console, ...args);
 };

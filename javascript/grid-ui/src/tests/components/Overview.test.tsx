@@ -102,7 +102,16 @@ const mockSessionsData = {
           browserVersion: '88.0',
           platformName: 'linux',
           'se:vnc': 'ws://192.168.1.10:5900/websockify'
-        })
+        }),
+        startTime: '2023-01-01T00:00:00Z',
+        uri: 'http://192.168.1.10:4444/session/session1',
+        nodeUri: 'http://192.168.1.10:4444',
+        sessionDurationMillis: 60000,
+        slot: {
+          id: 'slot1',
+          stereotype: '{"browserName":"chrome"}',
+          lastStarted: '2023-01-01T00:00:00Z'
+        }
       },
       {
         id: 'session2',
@@ -111,9 +120,19 @@ const mockSessionsData = {
           browserName: 'firefox',
           browserVersion: '78.0',
           platformName: 'windows'
-        })
+        }),
+        startTime: '2023-01-01T00:00:00Z',
+        uri: 'http://192.168.1.11:4444/session/session2',
+        nodeUri: 'http://192.168.1.11:4444',
+        sessionDurationMillis: 60000,
+        slot: {
+          id: 'slot2',
+          stereotype: '{"browserName":"firefox"}',
+          lastStarted: '2023-01-01T00:00:00Z'
+        }
       }
-    ]
+    ],
+    sessionQueueRequests: []
   }
 }
 
