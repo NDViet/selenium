@@ -190,7 +190,7 @@ function Overview (): JSX.Element {
             <Select value={sortOption} onChange={handleSortChange}
                     label="Sort By" style={{ minWidth: '170px' }}>
               {Object.keys(sortProperties).map((key) => (
-                <MenuItem value={key}>
+                <MenuItem key={key} value={key}>
                   {sortPropertiesLabel[key]}
                 </MenuItem>
               ))}
@@ -212,7 +212,7 @@ function Overview (): JSX.Element {
             sm={12}
             xl={4}
             xs={12}
-            key={index}
+            key={node.id}
             paddingX={1}
             paddingY={1}
           >
