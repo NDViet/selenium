@@ -212,7 +212,7 @@ function Overview (): JSX.Element {
             sm={12}
             xl={4}
             xs={12}
-            key={index}
+            key={node.id}
             paddingX={1}
             paddingY={1}
           >
