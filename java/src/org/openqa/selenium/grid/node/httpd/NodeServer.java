@@ -51,6 +51,7 @@ import org.openqa.selenium.grid.data.NodeAddedEvent;
 import org.openqa.selenium.grid.data.NodeDrainComplete;
 import org.openqa.selenium.grid.data.NodeRemovedEvent;
 import org.openqa.selenium.grid.data.NodeStatusEvent;
+import org.openqa.selenium.grid.data.SessionClosedEvent;
 import org.openqa.selenium.grid.log.LoggingOptions;
 import org.openqa.selenium.grid.node.HealthCheck;
 import org.openqa.selenium.grid.node.Node;
@@ -75,6 +76,7 @@ public class NodeServer extends TemplateGridServerCommand {
   private static final Logger LOG = Logger.getLogger(NodeServer.class.getName());
   private Node node;
   private EventBus bus;
+  private ProxyNodeWebsockets proxyNodeWebsockets;
   private final Thread shutdownHook =
       new Thread(() -> bus.fire(new NodeRemovedEvent(node.getStatus())));
 
@@ -175,8 +177,19 @@ public class NodeServer extends TemplateGridServerCommand {
 
     Route httpHandler = Route.combine(node, get("/readyz").to(() -> readinessCheck));
 
+    bus.addListener(
+        SessionClosedEvent.listener(
+            sessionId -> {
+              if (proxyNodeWebsockets != null) {
+                LOG.fine("Cleaning up WebSocket connections for session: " + sessionId);
+                proxyNodeWebsockets.cleanUpSession(sessionId);
+              }
+            }));
+
+    this.proxyNodeWebsockets = new ProxyNodeWebsockets(clientFactory, node, nodeOptions.getGridSubPath());
+    
     return new Handlers(
-        httpHandler, new ProxyNodeWebsockets(clientFactory, node, nodeOptions.getGridSubPath())) {
+        httpHandler, this.proxyNodeWebsockets) {
       @Override
       public void close() {
         if (node instanceof Closeable) {

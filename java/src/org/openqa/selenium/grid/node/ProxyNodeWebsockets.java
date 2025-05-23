@@ -23,8 +23,14 @@ import static org.openqa.selenium.remote.http.HttpMethod.GET;
 import com.google.common.collect.ImmutableSet;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -58,11 +64,50 @@ public class ProxyNodeWebsockets
   private final HttpClient.Factory clientFactory;
   private final Node node;
   private final String gridSubPath;
+  private final Map<SessionId, Set<WebSocket>> activeWebSockets;
+  private final Map<SessionId, Set<HttpClient>> activeClients;
 
   public ProxyNodeWebsockets(HttpClient.Factory clientFactory, Node node, String gridSubPath) {
     this.clientFactory = Objects.requireNonNull(clientFactory);
     this.node = Objects.requireNonNull(node);
     this.gridSubPath = gridSubPath;
+    this.activeWebSockets = Collections.synchronizedMap(new HashMap<>());
+    this.activeClients = Collections.synchronizedMap(new HashMap<>());
+  }
+  
+  /**
+   * Cleans up all WebSocket connections and HttpClient instances for a specific session.
+   * This should be called when a session is terminated to prevent memory leaks.
+   *
+   * @param sessionId The ID of the session to clean up
+   */
+  public void cleanUpSession(SessionId sessionId) {
+    if (sessionId == null) {
+      return;
+    }
+    
+    LOG.fine("Cleaning up WebSocket connections for session: " + sessionId);
+    
+    synchronized (activeWebSockets) {
+      Set<WebSocket> sockets = activeWebSockets.remove(sessionId);
+      if (sockets != null && !sockets.isEmpty()) {
+        LOG.fine("Closing " + sockets.size() + " WebSocket connections for session: " + sessionId);
+      }
+    }
+    
+    synchronized (activeClients) {
+      Set<HttpClient> clients = activeClients.remove(sessionId);
+      if (clients != null && !clients.isEmpty()) {
+        LOG.fine("Closing " + clients.size() + " HttpClient instances for session: " + sessionId);
+        for (HttpClient client : new ArrayList<>(clients)) {
+          try {
+            client.close();
+          } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to close HttpClient for session: " + sessionId, e);
+          }
+        }
+      }
+    }
   }
 
   @Override
@@ -233,11 +278,22 @@ public class ProxyNodeWebsockets
     LOG.info("Establishing connection to " + uri);
 
     HttpClient client = clientFactory.createClient(ClientConfig.defaultConfig().baseUri(uri));
+    
+    synchronized (activeClients) {
+      activeClients.computeIfAbsent(sessionId, id -> Collections.synchronizedSet(new HashSet<>()))
+          .add(client);
+    }
+    
     try {
       WebSocket upstream =
           client.openSocket(
               new HttpRequest(GET, uri.toString()),
-              new ForwardingListener(node, downstream, sessionConsumer, sessionId));
+              new ForwardingListener(node, downstream, sessionConsumer, sessionId, client, this));
+      
+      synchronized (activeWebSockets) {
+        activeWebSockets.computeIfAbsent(sessionId, id -> Collections.synchronizedSet(new HashSet<>()))
+            .add(upstream);
+      }
 
       return (msg) -> {
         try {
@@ -245,6 +301,26 @@ public class ProxyNodeWebsockets
         } finally {
           if (msg instanceof CloseMessage) {
             try {
+              synchronized (activeWebSockets) {
+                Set<WebSocket> sockets = activeWebSockets.get(sessionId);
+                if (sockets != null) {
+                  sockets.remove(upstream);
+                  if (sockets.isEmpty()) {
+                    activeWebSockets.remove(sessionId);
+                  }
+                }
+              }
+              
+              synchronized (activeClients) {
+                Set<HttpClient> clients = activeClients.get(sessionId);
+                if (clients != null) {
+                  clients.remove(client);
+                  if (clients.isEmpty()) {
+                    activeClients.remove(sessionId);
+                  }
+                }
+              }
+              
               client.close();
             } catch (Exception e) {
               LOG.log(Level.WARNING, "Failed to shutdown the client of " + uri, e);
@@ -254,6 +330,17 @@ public class ProxyNodeWebsockets
       };
     } catch (Exception e) {
       LOG.log(Level.WARNING, "Connecting to upstream websocket failed", e);
+      
+      synchronized (activeClients) {
+        Set<HttpClient> clients = activeClients.get(sessionId);
+        if (clients != null) {
+          clients.remove(client);
+          if (clients.isEmpty()) {
+            activeClients.remove(sessionId);
+          }
+        }
+      }
+      
       client.close();
       throw e;
     }
@@ -264,16 +351,22 @@ public class ProxyNodeWebsockets
     private final Consumer<Message> downstream;
     private final Consumer<SessionId> sessionConsumer;
     private final SessionId sessionId;
+    private final HttpClient client;
+    private final ProxyNodeWebsockets proxyNodeWebsockets;
 
     public ForwardingListener(
         Node node,
         Consumer<Message> downstream,
         Consumer<SessionId> sessionConsumer,
-        SessionId sessionId) {
+        SessionId sessionId,
+        HttpClient client,
+        ProxyNodeWebsockets proxyNodeWebsockets) {
       this.node = node;
       this.downstream = Objects.requireNonNull(downstream);
       this.sessionConsumer = Objects.requireNonNull(sessionConsumer);
       this.sessionId = Objects.requireNonNull(sessionId);
+      this.client = Objects.requireNonNull(client);
+      this.proxyNodeWebsockets = Objects.requireNonNull(proxyNodeWebsockets);
     }
 
     @Override
@@ -285,6 +378,32 @@ public class ProxyNodeWebsockets
     @Override
     public void onClose(int code, String reason) {
       downstream.accept(new CloseMessage(code, reason));
+      
+      synchronized (proxyNodeWebsockets.activeWebSockets) {
+        Set<WebSocket> sockets = proxyNodeWebsockets.activeWebSockets.get(sessionId);
+        if (sockets != null) {
+          if (sockets.isEmpty()) {
+            proxyNodeWebsockets.activeWebSockets.remove(sessionId);
+          }
+        }
+      }
+      
+      synchronized (proxyNodeWebsockets.activeClients) {
+        Set<HttpClient> clients = proxyNodeWebsockets.activeClients.get(sessionId);
+        if (clients != null) {
+          clients.remove(client);
+          if (clients.isEmpty()) {
+            proxyNodeWebsockets.activeClients.remove(sessionId);
+          }
+        }
+      }
+      
+      try {
+        client.close();
+      } catch (Exception e) {
+        LOG.log(Level.WARNING, "Failed to close client during WebSocket close", e);
+      }
+      
       node.releaseConnection(sessionId);
     }
 

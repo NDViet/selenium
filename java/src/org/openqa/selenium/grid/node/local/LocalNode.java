@@ -86,6 +86,7 @@ import org.openqa.selenium.grid.data.NodeHeartBeatEvent;
 import org.openqa.selenium.grid.data.NodeId;
 import org.openqa.selenium.grid.data.NodeStatus;
 import org.openqa.selenium.grid.data.Session;
+import org.openqa.selenium.grid.data.SessionClosedEvent;
 import org.openqa.selenium.grid.data.Slot;
 import org.openqa.selenium.grid.data.SlotId;
 import org.openqa.selenium.grid.jmx.JMXHelper;
@@ -859,6 +860,8 @@ public class LocalNode extends Node implements Closeable {
     }
 
     currentSessions.invalidate(id);
+    
+    bus.fire(new SessionClosedEvent(id));
   }
 
   private void stopAllSessions() {
