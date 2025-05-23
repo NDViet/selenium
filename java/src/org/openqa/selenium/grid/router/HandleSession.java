@@ -30,7 +30,10 @@ import java.io.Closeable;
 import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -53,6 +56,7 @@ import org.openqa.selenium.remote.http.HttpClient;
 import org.openqa.selenium.remote.http.HttpHandler;
 import org.openqa.selenium.remote.http.HttpRequest;
 import org.openqa.selenium.remote.http.HttpResponse;
+import org.openqa.selenium.remote.http.WebSocket;
 import org.openqa.selenium.remote.tracing.AttributeKey;
 import org.openqa.selenium.remote.tracing.AttributeMap;
 import org.openqa.selenium.remote.tracing.HttpTracing;
@@ -69,11 +73,13 @@ class HandleSession implements HttpHandler, Closeable {
     private final AtomicLong inUse;
     // volatile as the ConcurrentMap will not take care of synchronization
     private volatile Instant lastUse;
+    private final Set<WebSocket> activeWebSockets;
 
     public CacheEntry(HttpClient httpClient, long initialUsage) {
       this.httpClient = httpClient;
       this.inUse = new AtomicLong(initialUsage);
       this.lastUse = Instant.now();
+      this.activeWebSockets = Collections.synchronizedSet(new HashSet<>());
     }
   }
 
@@ -128,6 +134,10 @@ class HandleSession implements HttpHandler, Closeable {
               iterator.remove();
 
               try {
+                if (!entry.activeWebSockets.isEmpty()) {
+                  LOG.fine("Closing " + entry.activeWebSockets.size() + " active WebSockets");
+                  entry.activeWebSockets.clear();
+                }
                 entry.httpClient.close();
               } catch (Exception ex) {
                 LOG.log(Level.WARNING, "failed to close a stale httpclient", ex);
@@ -254,6 +264,10 @@ class HandleSession implements HttpHandler, Closeable {
         .values()
         .removeIf(
             (entry) -> {
+              if (!entry.activeWebSockets.isEmpty()) {
+                LOG.fine("Closing " + entry.activeWebSockets.size() + " active WebSockets");
+                entry.activeWebSockets.clear();
+              }
               entry.httpClient.close();
               return true;
             });

@@ -40,7 +40,9 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +57,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import java.util.stream.Collectors;
 import org.openqa.selenium.Beta;
 import org.openqa.selenium.Capabilities;
@@ -135,6 +138,7 @@ public class LocalDistributor extends Distributor implements Closeable {
   private final Secret registrationSecret;
   private final Map<NodeId, Runnable> allChecks = new HashMap<>();
   private final Duration healthcheckInterval;
+  private final Set<HttpClient> activeHttpClients = Collections.synchronizedSet(new HashSet<>());
 
   private final ReadWriteLock lock = new ReentrantReadWriteLock(/* fair */ true);
   private final GridModel model;
@@ -322,10 +326,16 @@ public class LocalDistributor extends Distributor implements Closeable {
               .collect(toImmutableSet());
 
       // A new node! Add this as a remote node, since we've not called add
+      HttpClient.Factory trackedClientFactory = config -> {
+        HttpClient client = clientFactory.createClient(config);
+        activeHttpClients.add(client);
+        return client;
+      };
+      
       RemoteNode remoteNode =
           new RemoteNode(
               tracer,
-              clientFactory,
+              trackedClientFactory,
               status.getNodeId(),
               status.getExternalUri(),
               registrationSecret,
@@ -474,6 +484,9 @@ public class LocalDistributor extends Distributor implements Closeable {
 
       if (node instanceof RemoteNode) {
         ((RemoteNode) node).close();
+        
+        synchronized (activeHttpClients) {
+        }
       }
     } finally {
       writeLock.unlock();
@@ -768,6 +781,20 @@ public class LocalDistributor extends Distributor implements Closeable {
     shutdownGracefully("Local Distributor - Node Health Check", nodeHealthCheckService);
     shutdownGracefully("Local Distributor - New Session Queue", newSessionService);
     shutdownGracefully("Local Distributor - Session Creation", sessionCreatorExecutor);
+    
+    if (!activeHttpClients.isEmpty()) {
+      LOG.fine("Closing " + activeHttpClients.size() + " active HttpClient instances");
+      synchronized (activeHttpClients) {
+        for (HttpClient client : activeHttpClients) {
+          try {
+            client.close();
+          } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to close HttpClient", e);
+          }
+        }
+        activeHttpClients.clear();
+      }
+    }
   }
 
   private class NewSessionRunnable implements Runnable {

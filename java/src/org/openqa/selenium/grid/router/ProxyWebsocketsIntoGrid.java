@@ -20,8 +20,11 @@ package org.openqa.selenium.grid.router;
 import static org.openqa.selenium.remote.http.HttpMethod.GET;
 
 import java.net.URI;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -46,10 +49,14 @@ public class ProxyWebsocketsIntoGrid
   private static final Logger LOG = Logger.getLogger(ProxyWebsocketsIntoGrid.class.getName());
   private final HttpClient.Factory clientFactory;
   private final SessionMap sessions;
+  private final Set<WebSocket> activeWebSockets;
+  private final Set<WebSocket> closedWebSockets;
 
   public ProxyWebsocketsIntoGrid(HttpClient.Factory clientFactory, SessionMap sessions) {
     this.clientFactory = Objects.requireNonNull(clientFactory);
     this.sessions = Objects.requireNonNull(sessions);
+    this.activeWebSockets = Collections.synchronizedSet(new HashSet<>());
+    this.closedWebSockets = Collections.synchronizedSet(new HashSet<>());
   }
 
   @Override
@@ -70,7 +77,8 @@ public class ProxyWebsocketsIntoGrid
           clientFactory.createClient(ClientConfig.defaultConfig().baseUri(sessionUri));
       try {
         WebSocket upstream =
-            client.openSocket(new HttpRequest(GET, uri), new ForwardingListener(downstream));
+            client.openSocket(new HttpRequest(GET, uri), new ForwardingListener(downstream, client));
+        activeWebSockets.add(upstream);
 
         return Optional.of(
             (msg) -> {
@@ -79,6 +87,8 @@ public class ProxyWebsocketsIntoGrid
               } finally {
                 if (msg instanceof CloseMessage) {
                   try {
+                    activeWebSockets.remove(upstream);
+                    closedWebSockets.add(upstream);
                     client.close();
                   } catch (Exception e) {
                     LOG.log(Level.WARNING, "Failed to shutdown the client of " + sessionUri, e);
@@ -88,6 +98,10 @@ public class ProxyWebsocketsIntoGrid
             });
       } catch (Exception e) {
         LOG.log(Level.WARNING, "Connecting to upstream websocket failed", e);
+        if (!activeWebSockets.isEmpty()) {
+          LOG.fine("Removing " + activeWebSockets.size() + " active websockets");
+          activeWebSockets.clear();
+        }
         client.close();
         return Optional.empty();
       }
@@ -99,9 +113,11 @@ public class ProxyWebsocketsIntoGrid
 
   private static class ForwardingListener implements WebSocket.Listener {
     private final Consumer<Message> downstream;
+    private final HttpClient client;
 
-    public ForwardingListener(Consumer<Message> downstream) {
+    public ForwardingListener(Consumer<Message> downstream, HttpClient client) {
       this.downstream = Objects.requireNonNull(downstream);
+      this.client = Objects.requireNonNull(client);
     }
 
     @Override
@@ -112,6 +128,11 @@ public class ProxyWebsocketsIntoGrid
     @Override
     public void onClose(int code, String reason) {
       downstream.accept(new CloseMessage(code, reason));
+      try {
+        client.close();
+      } catch (Exception e) {
+        LOG.log(Level.WARNING, "Failed to close client after WebSocket closed", e);
+      }
     }
 
     @Override
