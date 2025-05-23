@@ -59,6 +59,11 @@ function getVncUrl(session, origin) {
     let vnc = parsed['se:vnc'] ?? ''
     if (vnc.length > 0) {
       try {
+        if (!vnc.startsWith('ws://') && !vnc.startsWith('wss://') && 
+            !vnc.startsWith('http://') && !vnc.startsWith('https://')) {
+          return ''
+        }
+        
         const url = new URL(origin)
         if (!vnc.startsWith('ws://') && !vnc.startsWith('wss://') && !vnc.startsWith('http://') && !vnc.startsWith('https://')) {
           return ''
