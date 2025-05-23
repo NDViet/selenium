@@ -152,6 +152,22 @@ const mocks = [
     result: {
       data: mockSessionsData
     }
+  },
+  {
+    request: {
+      query: GRID_SESSIONS_QUERY
+    },
+    result: {
+      data: mockSessionsData
+    }
+  },
+  {
+    request: {
+      query: GRID_SESSIONS_QUERY
+    },
+    result: {
+      data: mockSessionsData
+    }
   }
 ]
 
@@ -314,6 +330,22 @@ describe('Overview component', () => {
           query: NODES_QUERY
         },
         error: new Error('Network error')
+      },
+      {
+        request: {
+          query: GRID_SESSIONS_QUERY
+        },
+        result: {
+          data: mockSessionsData
+        }
+      },
+      {
+        request: {
+          query: GRID_SESSIONS_QUERY
+        },
+        result: {
+          data: mockSessionsData
+        }
       }
     ]
 
@@ -337,6 +369,22 @@ describe('Overview component', () => {
         },
         result: {
           data: { nodesInfo: { nodes: [] } }
+        }
+      },
+      {
+        request: {
+          query: GRID_SESSIONS_QUERY
+        },
+        result: {
+          data: mockSessionsData
+        }
+      },
+      {
+        request: {
+          query: GRID_SESSIONS_QUERY
+        },
+        result: {
+          data: mockSessionsData
         }
       }
     ]
