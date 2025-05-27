@@ -471,6 +471,32 @@ function RunningSessions (props) {
                                     </DialogContent>
                                     <DialogActions>
                                       <Button
+                                        onClick={() => {
+                                          if (window.confirm('Are you sure you want to delete this session?')) {
+                                            fetch(`${origin}/session/${row.id}`, {
+                                              method: 'DELETE'
+                                            })
+                                            .then(response => {
+                                              if (response.ok) {
+                                                handleDialogClose()
+                                                alert('Session deleted successfully')
+                                              } else {
+                                                alert('Failed to delete session')
+                                              }
+                                            })
+                                            .catch(error => {
+                                              console.error('Error deleting session:', error)
+                                              alert('Error deleting session')
+                                            })
+                                          }
+                                        }}
+                                        color='error'
+                                        variant='contained'
+                                        sx={{ marginRight: 1 }}
+                                      >
+                                        Delete
+                                      </Button>
+                                      <Button
                                         onClick={handleDialogClose}
                                         color='primary'
                                         variant='contained'
@@ -532,6 +558,32 @@ function RunningSessions (props) {
                                 </Typography>
                               </DialogContent>
                               <DialogActions>
+                                <Button
+                                  onClick={() => {
+                                    if (window.confirm('Are you sure you want to delete this session?')) {
+                                      fetch(`${origin}/session/${row.id}`, {
+                                        method: 'DELETE'
+                                      })
+                                      .then(response => {
+                                        if (response.ok) {
+                                          setRowOpen('')
+                                          alert('Session deleted successfully')
+                                        } else {
+                                          alert('Failed to delete session')
+                                        }
+                                      })
+                                      .catch(error => {
+                                        console.error('Error deleting session:', error)
+                                        alert('Error deleting session')
+                                      })
+                                    }
+                                  }}
+                                  color='error'
+                                  variant='contained'
+                                  sx={{ marginRight: 1 }}
+                                >
+                                  Delete
+                                </Button>
                                 <Button
                                   onClick={() => setRowOpen('')}
                                   color='primary'
