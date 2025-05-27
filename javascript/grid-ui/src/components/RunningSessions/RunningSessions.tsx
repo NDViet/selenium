@@ -258,7 +258,37 @@ function RunningSessions (props) {
 
   const handleDeleteSession = async () => {
     try {
-      const response = await fetch(`${origin}/session/${sessionToDelete}`, {
+      const session = sessions.find(s => s.id === sessionToDelete)
+      if (!session) {
+        setFeedbackMessage('Session not found')
+        setFeedbackSeverity('error')
+        setConfirmDeleteOpen(false)
+        setFeedbackOpen(true)
+        return
+      }
+
+      let deleteUrl = ''
+      
+      try {
+        const capabilities = JSON.parse(session.capabilities)
+        const gridWebSocketUrl = capabilities['se:gridWebSocketUrl']
+        
+        if (gridWebSocketUrl && gridWebSocketUrl.trim() !== '') {
+          const wsUrl = new URL(gridWebSocketUrl)
+          wsUrl.protocol = wsUrl.protocol === 'wss:' ? 'https:' : 'http:'
+          deleteUrl = `${wsUrl.origin}/session/${sessionToDelete}`
+        }
+      } catch (error) {
+        console.log('Error parsing capabilities or gridWebSocketUrl:', error)
+      }
+      
+      if (!deleteUrl) {
+        const currentUrl = window.location.href
+        const baseUrl = currentUrl.split('/ui')[0] // Remove /ui and everything after
+        deleteUrl = `${baseUrl}/session/${sessionToDelete}`
+      }
+
+      const response = await fetch(deleteUrl, {
         method: 'DELETE'
       })
       
