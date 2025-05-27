@@ -175,6 +175,12 @@ const Transition = React.forwardRef(function Transition (
 function RunningSessions (props) {
   const [rowOpen, setRowOpen] = useState('')
   const [rowLiveViewOpen, setRowLiveViewOpen] = useState('')
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [sessionToDelete, setSessionToDelete] = useState('')
+  const [deleteLocation, setDeleteLocation] = useState('') // 'info' or 'liveview'
+  const [feedbackMessage, setFeedbackMessage] = useState('')
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackSeverity, setFeedbackSeverity] = useState('success')
   const [order, setOrder] = useState<Order>('asc')
   const [orderBy, setOrderBy] = useState<keyof SessionData>('sessionDurationMillis')
   const [selected, setSelected] = useState<string[]>([])
@@ -243,6 +249,48 @@ function RunningSessions (props) {
   }
 
   const isSelected = (name: string): boolean => selected.includes(name)
+
+  const handleDeleteConfirmation = (sessionId: string, location: string) => {
+    setSessionToDelete(sessionId)
+    setDeleteLocation(location)
+    setConfirmDeleteOpen(true)
+  }
+
+  const handleDeleteSession = async () => {
+    try {
+      const response = await fetch(`${origin}/session/${sessionToDelete}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        setFeedbackMessage('Session deleted successfully')
+        setFeedbackSeverity('success')
+        if (deleteLocation === 'liveview') {
+          handleDialogClose()
+        } else {
+          setRowOpen('')
+        }
+      } else {
+        setFeedbackMessage('Failed to delete session')
+        setFeedbackSeverity('error')
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error)
+      setFeedbackMessage('Error deleting session')
+      setFeedbackSeverity('error')
+    }
+    
+    setConfirmDeleteOpen(false)
+    setFeedbackOpen(true)
+    setSessionToDelete('')
+    setDeleteLocation('')
+  }
+
+  const handleCancelDelete = () => {
+    setConfirmDeleteOpen(false)
+    setSessionToDelete('')
+    setDeleteLocation('')
+  }
 
   const displaySessionInfo = (id: string): JSX.Element => {
     const handleInfoIconClick = (): void => {
@@ -471,25 +519,7 @@ function RunningSessions (props) {
                                     </DialogContent>
                                     <DialogActions>
                                       <Button
-                                        onClick={() => {
-                                          if (window.confirm('Are you sure you want to delete this session?')) {
-                                            fetch(`${origin}/session/${row.id}`, {
-                                              method: 'DELETE'
-                                            })
-                                            .then(response => {
-                                              if (response.ok) {
-                                                handleDialogClose()
-                                                alert('Session deleted successfully')
-                                              } else {
-                                                alert('Failed to delete session')
-                                              }
-                                            })
-                                            .catch(error => {
-                                              console.error('Error deleting session:', error)
-                                              alert('Error deleting session')
-                                            })
-                                          }
-                                        }}
+                                        onClick={() => handleDeleteConfirmation(row.id as string, 'liveview')}
                                         color='error'
                                         variant='contained'
                                         sx={{ marginRight: 1 }}
@@ -559,25 +589,7 @@ function RunningSessions (props) {
                               </DialogContent>
                               <DialogActions>
                                 <Button
-                                  onClick={() => {
-                                    if (window.confirm('Are you sure you want to delete this session?')) {
-                                      fetch(`${origin}/session/${row.id}`, {
-                                        method: 'DELETE'
-                                      })
-                                      .then(response => {
-                                        if (response.ok) {
-                                          setRowOpen('')
-                                          alert('Session deleted successfully')
-                                        } else {
-                                          alert('Failed to delete session')
-                                        }
-                                      })
-                                      .catch(error => {
-                                        console.error('Error deleting session:', error)
-                                        alert('Error deleting session')
-                                      })
-                                    }
-                                  }}
+                                  onClick={() => handleDeleteConfirmation(row.id as string, 'info')}
                                   color='error'
                                   variant='contained'
                                   sx={{ marginRight: 1 }}
@@ -638,6 +650,63 @@ function RunningSessions (props) {
           />
         </div>
       )}
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={handleCancelDelete}
+        aria-labelledby='delete-confirmation-dialog'
+      >
+        <DialogTitle id='delete-confirmation-dialog'>
+          Confirm Session Deletion
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this session? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleCancelDelete}
+            color='primary'
+            variant='outlined'
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteSession}
+            color='error'
+            variant='contained'
+            autoFocus
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Feedback Dialog */}
+      <Dialog
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        aria-labelledby='feedback-dialog'
+      >
+        <DialogTitle id='feedback-dialog'>
+          {feedbackSeverity === 'success' ? 'Success' : 'Error'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography color={feedbackSeverity === 'success' ? 'success.main' : 'error.main'}>
+            {feedbackMessage}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setFeedbackOpen(false)}
+            color='primary'
+            variant='contained'
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
