@@ -519,14 +519,6 @@ function RunningSessions (props) {
                                     </DialogContent>
                                     <DialogActions>
                                       <Button
-                                        onClick={() => handleDeleteConfirmation(row.id as string, 'liveview')}
-                                        color='error'
-                                        variant='contained'
-                                        sx={{ marginRight: 1 }}
-                                      >
-                                        Delete
-                                      </Button>
-                                      <Button
                                         onClick={handleDialogClose}
                                         color='primary'
                                         variant='contained'
