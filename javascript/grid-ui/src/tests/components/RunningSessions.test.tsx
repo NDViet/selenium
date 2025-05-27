@@ -22,8 +22,10 @@ import { act, screen, within, waitFor } from '@testing-library/react'
 import { render } from '../utils/render-utils'
 import userEvent from '@testing-library/user-event'
 import { createSessionData } from '../../models/session-data'
+import '@testing-library/jest-dom'
 
-global.fetch = jest.fn()
+const mockFetch = jest.fn().mockImplementation(() => Promise.resolve({ ok: true }))
+global.fetch = mockFetch as jest.Mock
 
 Object.defineProperty(window, 'location', {
   value: {
@@ -286,7 +288,7 @@ describe('Session deletion functionality', () => {
     expect(screen.getByText('Are you sure you want to delete this session? This action cannot be undone.')).toBeInTheDocument()
     
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /delete/i, exact: true })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
   })
 
   it('uses window.location.origin for URL construction with se:gridWebSocketUrl', async () => {
@@ -302,11 +304,11 @@ describe('Session deletion functionality', () => {
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
     
-    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
+    const confirmButton = screen.getByRole('button', { name: /delete/i })
     await user.click(confirmButton)
     
     expect(global.fetch).toHaveBeenCalledWith(
-      `${window.location.origin}/session/${sessionWithWsData.id}`,
+      `${window.location.origin}/selenium/session/${sessionWithWsData.id}`,
       { method: 'DELETE' }
     )
     
@@ -329,7 +331,7 @@ describe('Session deletion functionality', () => {
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
     
-    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
+    const confirmButton = screen.getByRole('button', { name: /delete/i })
     await user.click(confirmButton)
     
     const expectedUrl = window.location.href.split('/ui')[0] + '/session/' + sessionWithoutWsData.id
@@ -357,7 +359,7 @@ describe('Session deletion functionality', () => {
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
     
-    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
+    const confirmButton = screen.getByRole('button', { name: /delete/i })
     await user.click(confirmButton)
     
     await waitFor(() => {
@@ -379,7 +381,7 @@ describe('Session deletion functionality', () => {
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
     
-    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
+    const confirmButton = screen.getByRole('button', { name: /delete/i })
     await user.click(confirmButton)
     
     await waitFor(() => {
