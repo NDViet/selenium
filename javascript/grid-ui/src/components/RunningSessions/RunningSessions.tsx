@@ -268,17 +268,21 @@ function RunningSessions (props) {
       }
 
       let deleteUrl = ''
-      
-      try {
-        const capabilities = JSON.parse(session.capabilities)
-        const gridWebSocketUrl = capabilities['se:gridWebSocketUrl']
-        
-        if (gridWebSocketUrl && gridWebSocketUrl.trim() !== '') {
-          deleteUrl = `${window.location.origin}/session/${sessionToDelete}`
+
+      const parsed = JSON.parse(session.capabilities)
+      let gridWs = parsed['se:gridWebSocketUrl'] ?? ''
+      if (gridWs.length > 0) {
+        try {
+          const url = new URL(origin)
+          const sessionUrl = new URL(gridWs)
+          url.pathname = sessionUrl.pathname
+          url.protocol = sessionUrl.protocol === 'wss:' ? 'https:' : 'http:'
+          deleteUrl = url.href
+        } catch (error) {
+          deleteUrl = ''
         }
-      } catch (error) {
       }
-      
+
       if (!deleteUrl) {
         const currentUrl = window.location.href
         const baseUrl = currentUrl.split('/ui')[0] // Remove /ui and everything after
@@ -288,7 +292,7 @@ function RunningSessions (props) {
       const response = await fetch(deleteUrl, {
         method: 'DELETE'
       })
-      
+
       if (response.ok) {
         setFeedbackMessage('Session deleted successfully')
         setFeedbackSeverity('success')
@@ -306,7 +310,7 @@ function RunningSessions (props) {
       setFeedbackMessage('Error deleting session')
       setFeedbackSeverity('error')
     }
-    
+
     setConfirmDeleteOpen(false)
     setFeedbackOpen(true)
     setSessionToDelete('')
@@ -355,15 +359,15 @@ function RunningSessions (props) {
     try {
       const capabilities = JSON.parse(capabilitiesStr as string)
       const value = capabilities[key]
-      
+
       if (value === undefined || value === null) {
         return ''
       }
-      
+
       if (typeof value === 'object') {
         return JSON.stringify(value)
       }
-      
+
       return String(value)
     } catch (e) {
       return ''
@@ -382,11 +386,11 @@ function RunningSessions (props) {
       session.slot,
       origin
     )
-    
+
     selectedColumns.forEach(column => {
       sessionData[column] = getCapabilityValue(session.capabilities, column)
     })
-    
+
     return sessionData
   })
   const emptyRows = rowsPerPage - Math.min(rowsPerPage, rows.length - page * rowsPerPage)
@@ -403,14 +407,14 @@ function RunningSessions (props) {
       setRowLiveViewOpen(s)
     }
   }, [sessionId, sessions])
-  
+
   useEffect(() => {
     const dynamicHeadCells = selectedColumns.map(column => ({
       id: column,
       numeric: false,
       label: column
     }))
-    
+
     setHeadCells([...fixedHeadCells, ...dynamicHeadCells])
   }, [selectedColumns])
 
@@ -421,7 +425,7 @@ function RunningSessions (props) {
           <Paper sx={{ width: '100%', marginBottom: 2 }}>
             <EnhancedTableToolbar title='Running'>
               <Box display="flex" alignItems="center">
-                <ColumnSelector 
+                <ColumnSelector
                   sessions={sessions}
                   selectedColumns={selectedColumns}
                   onColumnSelectionChange={(columns) => {
