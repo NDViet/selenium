@@ -274,12 +274,9 @@ function RunningSessions (props) {
         const gridWebSocketUrl = capabilities['se:gridWebSocketUrl']
         
         if (gridWebSocketUrl && gridWebSocketUrl.trim() !== '') {
-          const wsUrl = new URL(gridWebSocketUrl)
-          wsUrl.protocol = wsUrl.protocol === 'wss:' ? 'https:' : 'http:'
-          deleteUrl = `${wsUrl.origin}/session/${sessionToDelete}`
+          deleteUrl = `${window.location.origin}/session/${sessionToDelete}`
         }
       } catch (error) {
-        console.log('Error parsing capabilities or gridWebSocketUrl:', error)
       }
       
       if (!deleteUrl) {
