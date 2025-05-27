@@ -367,6 +367,18 @@ public class GridModel {
       readLock.unlock();
     }
   }
+  
+  public Instant getLastTouchTime(NodeId nodeId) {
+    Require.nonNull("Node ID", nodeId);
+    
+    Lock readLock = lock.readLock();
+    readLock.lock();
+    try {
+      return nodePurgeTimes.getOrDefault(nodeId, Instant.EPOCH);
+    } finally {
+      readLock.unlock();
+    }
+  }
 
   private NodeStatus rewrite(NodeStatus status, Availability availability) {
     return new NodeStatus(

@@ -32,6 +32,7 @@ public class DistributorOptions {
 
   public static final int DEFAULT_HEALTHCHECK_INTERVAL = 120;
   public static final int DEFAULT_PURGE_NODES_INTERVAL = 30;
+  public static final int DEFAULT_NODE_STATUS_CACHE_TTL = 30;
   public static final String DISTRIBUTOR_SECTION = "distributor";
   static final String DEFAULT_DISTRIBUTOR_IMPLEMENTATION =
       "org.openqa.selenium.grid.distributor.local.LocalDistributor";
@@ -143,5 +144,16 @@ public class DistributorOptions {
     return config
         .getBool(DISTRIBUTOR_SECTION, "reject-unsupported-caps")
         .orElse(DEFAULT_REJECT_UNSUPPORTED_CAPS);
+  }
+
+  public Duration getNodeStatusCacheTtl() {
+    // If the user sets 0s or less, we default to 0s and disable the node status caching.
+    int seconds =
+        Math.max(
+            config
+                .getInt(DISTRIBUTOR_SECTION, "node-status-cache-ttl")
+                .orElse(DEFAULT_NODE_STATUS_CACHE_TTL),
+            0);
+    return Duration.ofSeconds(seconds);
   }
 }

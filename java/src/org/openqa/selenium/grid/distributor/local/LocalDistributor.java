@@ -394,7 +394,9 @@ public class LocalDistributor extends Distributor implements Closeable {
       Lock readLock = this.lock.readLock();
       readLock.lock();
       try {
-        nodeHealthChecks = ImmutableMap.copyOf(allChecks);
+        nodeHealthChecks = allChecks.entrySet().stream()
+            .filter(entry -> shouldRunHealthCheck(entry.getKey()))
+            .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
       } finally {
         readLock.unlock();
       }
@@ -403,6 +405,22 @@ public class LocalDistributor extends Distributor implements Closeable {
         GuardedRunnable.guard(nodeHealthCheck).run();
       }
     };
+  }
+  
+  private boolean shouldRunHealthCheck(NodeId nodeId) {
+    NodeStatus nodeStatus = model.getSnapshot().stream()
+        .filter(node -> node.getNodeId().equals(nodeId))
+        .findFirst()
+        .orElse(null);
+    
+    if (nodeStatus == null) {
+      return true; // Always check if we don't have status
+    }
+    
+    Instant lastTouched = model.getLastTouchTime(nodeId);
+    Duration timeSinceHeartbeat = Duration.between(lastTouched, Instant.now());
+    return nodeStatus.getAvailability() != UP || 
+           timeSinceHeartbeat.compareTo(nodeStatus.getHeartbeatPeriod().multipliedBy(2)) > 0;
   }
 
   private Runnable asRunnableHealthCheck(Node node) {

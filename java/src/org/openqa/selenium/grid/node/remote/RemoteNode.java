@@ -37,6 +37,7 @@ import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -80,6 +81,8 @@ public class RemoteNode extends Node implements Closeable {
   private final Set<Capabilities> capabilities;
   private final HealthCheck healthCheck;
   private final Filter addSecret;
+  private volatile NodeStatus cachedStatus;
+  private volatile Instant cacheTimestamp;
 
   public RemoteNode(
       Tracer tracer,
@@ -248,6 +251,14 @@ public class RemoteNode extends Node implements Closeable {
 
   @Override
   public NodeStatus getStatus() {
+    if (cachedStatus != null && isCacheValid()) {
+      return cachedStatus;
+    }
+    
+    return fetchAndCacheStatus();
+  }
+  
+  private NodeStatus fetchAndCacheStatus() {
     HttpRequest req = new HttpRequest(GET, "/status");
     HttpTracing.inject(tracer, tracer.getCurrentContext(), req);
 
@@ -264,7 +275,10 @@ public class RemoteNode extends Node implements Closeable {
 
           while (in.hasNext()) {
             if ("node".equals(in.nextName())) {
-              return in.read(NodeStatus.class);
+              NodeStatus status = in.read(NodeStatus.class);
+              this.cachedStatus = status;
+              this.cacheTimestamp = Instant.now();
+              return status;
             } else {
               in.skipValue();
             }
@@ -280,6 +294,16 @@ public class RemoteNode extends Node implements Closeable {
     }
 
     throw new IllegalStateException("Unable to read status");
+  }
+  
+  private boolean isCacheValid() {
+    if (cachedStatus == null || cacheTimestamp == null) {
+      return false;
+    }
+    
+    Duration cacheAge = Duration.between(cacheTimestamp, Instant.now());
+    Duration maxCacheAge = cachedStatus.getHeartbeatPeriod().dividedBy(2);
+    return cacheAge.compareTo(maxCacheAge) <= 0;
   }
 
   @Override
@@ -316,7 +340,7 @@ public class RemoteNode extends Node implements Closeable {
     @Override
     public Result check() {
       try {
-        NodeStatus status = getStatus();
+        NodeStatus status = fetchAndCacheStatus();
 
         if (status.getNodeId() != null && !Objects.equals(getId(), status.getNodeId())) {
           // ensure the original RemoteNode stays DOWN when it has been restarted and registered
@@ -339,6 +363,8 @@ public class RemoteNode extends Node implements Closeable {
                 "Unknown node availability: " + status.getAvailability());
         }
       } catch (RuntimeException e) {
+        cachedStatus = null;
+        cacheTimestamp = null;
         return new Result(DOWN, "Unable to determine node status: " + e.getMessage());
       }
     }
