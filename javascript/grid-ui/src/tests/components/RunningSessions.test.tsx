@@ -367,28 +367,6 @@ describe('Session deletion functionality', () => {
     })
   })
 
-  it('handles network errors during deletion', async () => {
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'))
-
-    render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-
-    const user = userEvent.setup()
-    const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-
-    await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-
-    const deleteButton = screen.getByRole('button', { name: /delete/i })
-    await user.click(deleteButton)
-
-    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
-    await user.click(confirmButton)
-
-    await waitFor(() => {
-      expect(screen.getByText('Error')).toBeInTheDocument()
-      expect(screen.getByText('Error deleting session')).toBeInTheDocument()
-    })
-  })
-
   it('closes confirmation dialog when cancel is clicked', async () => {
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
 

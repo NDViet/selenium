@@ -270,12 +270,12 @@ function RunningSessions (props) {
       let deleteUrl = ''
 
       const parsed = JSON.parse(session.capabilities)
-      let gridWs = parsed['se:gridWebSocketUrl'] ?? ''
-      if (gridWs.length > 0) {
+      let wsUrl = parsed['webSocketUrl'] ?? ''
+      if (wsUrl.length > 0) {
         try {
           const url = new URL(origin)
-          const sessionUrl = new URL(gridWs)
-          url.pathname = sessionUrl.pathname
+          const sessionUrl = new URL(wsUrl)
+          url.pathname = sessionUrl.pathname.split('/se/')[0] // Remove /se/ and everything after
           url.protocol = sessionUrl.protocol === 'wss:' ? 'https:' : 'http:'
           deleteUrl = url.href
         } catch (error) {

@@ -916,7 +916,7 @@ public class LocalNode extends Node implements Closeable {
       String bidiPath = String.format("/session/%s/se/bidi", other.getId());
       toUse =
           new PersistentCapabilities(toUse)
-              .setCapability("se:gridWebSocketUrl", rewrite(uri.getPath()))
+              .setCapability("se:gridWebSocketUrl", uri)
               .setCapability("webSocketUrl", rewrite(bidiPath));
     } else {
       // Remove any "webSocketUrl" from the response, BiDi is not supported nor enabled
