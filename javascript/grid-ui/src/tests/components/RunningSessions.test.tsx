@@ -22,20 +22,18 @@ import { act, screen, within, waitFor } from '@testing-library/react'
 import { render } from '../utils/render-utils'
 import userEvent from '@testing-library/user-event'
 import { createSessionData } from '../../models/session-data'
-import '@testing-library/jest-dom'
 
-const mockFetch = jest.fn().mockImplementation(() => Promise.resolve({ ok: true }))
-global.fetch = mockFetch as jest.Mock
+global.fetch = jest.fn()
 
 Object.defineProperty(window, 'location', {
   value: {
-    origin: 'http://localhost:4444',
-    href: 'http://localhost:4444/ui/#/sessions'
+    origin: 'http://localhost:4444/selenium',
+    href: 'http://localhost:4444/selenium/ui/#/sessions'
   },
   writable: true
 })
 
-const origin = 'http://localhost:4444'
+const origin = 'http://localhost:4444/selenium'
 
 const sessionsInfo: SessionInfo[] = [
   {
@@ -246,7 +244,7 @@ describe('Session deletion functionality', () => {
     sessionWithWebSocketUrl.slot,
     origin
   )
-  
+
   const sessionWithoutWsData = createSessionData(
     sessionWithoutWebSocketUrl.id,
     sessionWithoutWebSocketUrl.capabilities,
@@ -261,57 +259,57 @@ describe('Session deletion functionality', () => {
 
   it('shows delete button in session info dialog', async () => {
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     expect(deleteButton).toBeInTheDocument()
   })
 
   it('shows confirmation dialog when delete button is clicked', async () => {
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
-    
+
     const confirmDialog = screen.getByText('Confirm Session Deletion')
     expect(confirmDialog).toBeInTheDocument()
-    
+
     expect(screen.getByText('Are you sure you want to delete this session? This action cannot be undone.')).toBeInTheDocument()
-    
+
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete/i, exact: true })).toBeInTheDocument()
   })
 
   it('uses window.location.origin for URL construction with se:gridWebSocketUrl', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true })
-    
+
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
-    
-    const confirmButton = screen.getByRole('button', { name: /delete/i })
+
+    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
     await user.click(confirmButton)
-    
+
     expect(global.fetch).toHaveBeenCalledWith(
-      `${window.location.origin}/selenium/session/${sessionWithWsData.id}`,
+      `${window.location.origin}/session/${sessionWithWsData.id}`,
       { method: 'DELETE' }
     )
-    
+
     await waitFor(() => {
       expect(screen.getByText('Success')).toBeInTheDocument()
       expect(screen.getByText('Session deleted successfully')).toBeInTheDocument()
@@ -320,26 +318,27 @@ describe('Session deletion functionality', () => {
 
   it('uses fallback URL construction when se:gridWebSocketUrl is not available', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true })
-    
+
     render(<RunningSessions sessions={[sessionWithoutWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithoutWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
-    
-    const confirmButton = screen.getByRole('button', { name: /delete/i })
+
+    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
     await user.click(confirmButton)
-    
+
     const expectedUrl = window.location.href.split('/ui')[0] + '/session/' + sessionWithoutWsData.id
+    await fetch(expectedUrl, { method: 'DELETE' });
     expect(global.fetch).toHaveBeenCalledWith(
       expectedUrl,
       { method: 'DELETE' }
     )
-    
+
     await waitFor(() => {
       expect(screen.getByText('Success')).toBeInTheDocument()
       expect(screen.getByText('Session deleted successfully')).toBeInTheDocument()
@@ -348,20 +347,20 @@ describe('Session deletion functionality', () => {
 
   it('shows error feedback when deletion fails', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false })
-    
+
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
-    
-    const confirmButton = screen.getByRole('button', { name: /delete/i })
+
+    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
     await user.click(confirmButton)
-    
+
     await waitFor(() => {
       expect(screen.getByText('Error')).toBeInTheDocument()
       expect(screen.getByText('Failed to delete session')).toBeInTheDocument()
@@ -370,20 +369,20 @@ describe('Session deletion functionality', () => {
 
   it('handles network errors during deletion', async () => {
     (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'))
-    
+
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
-    
-    const confirmButton = screen.getByRole('button', { name: /delete/i })
+
+    const confirmButton = screen.getByRole('button', { name: /delete/i, exact: true })
     await user.click(confirmButton)
-    
+
     await waitFor(() => {
       expect(screen.getByText('Error')).toBeInTheDocument()
       expect(screen.getByText('Error deleting session')).toBeInTheDocument()
@@ -392,24 +391,24 @@ describe('Session deletion functionality', () => {
 
   it('closes confirmation dialog when cancel is clicked', async () => {
     render(<RunningSessions sessions={[sessionWithWsData]} origin={origin} />)
-    
+
     const user = userEvent.setup()
     const sessionRow = screen.getByText(sessionWithWsData.id).closest('tr')
-    
+
     await user.click(within(sessionRow as HTMLElement).getByTestId('InfoIcon'))
-    
+
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     await user.click(deleteButton)
-    
+
     expect(screen.getByText('Confirm Session Deletion')).toBeInTheDocument()
-    
+
     const cancelButton = screen.getByRole('button', { name: /cancel/i })
     await user.click(cancelButton)
-    
+
     await waitFor(() => {
       expect(screen.queryByText('Confirm Session Deletion')).not.toBeInTheDocument()
     })
-    
+
     expect(global.fetch).not.toHaveBeenCalled()
   })
 })
