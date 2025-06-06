@@ -44,6 +44,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Clock;
@@ -145,6 +149,7 @@ public class LocalNode extends Node implements Closeable {
   private final AtomicInteger sessionCount = new AtomicInteger();
   private final Runnable shutdown;
   private final ReadWriteLock drainLock = new ReentrantReadWriteLock();
+  private final Optional<Path> statusFilePath;
 
   protected LocalNode(
       Tracer tracer,
@@ -162,7 +167,8 @@ public class LocalNode extends Node implements Closeable {
       List<SessionSlot> factories,
       Secret registrationSecret,
       boolean managedDownloadsEnabled,
-      int connectionLimitPerSession) {
+      int connectionLimitPerSession,
+      Optional<Path> statusFilePath) {
     super(
         tracer,
         new NodeId(UUID.randomUUID()),
@@ -186,6 +192,7 @@ public class LocalNode extends Node implements Closeable {
     this.bidiEnabled = bidiEnabled;
     this.managedDownloadsEnabled = managedDownloadsEnabled;
     this.connectionLimitPerSession = connectionLimitPerSession;
+    this.statusFilePath = statusFilePath;
 
     this.healthCheck =
         healthCheck == null
@@ -276,7 +283,11 @@ public class LocalNode extends Node implements Closeable {
               return thread;
             });
     heartbeatNodeService.scheduleAtFixedRate(
-        GuardedRunnable.guard(() -> bus.fire(new NodeHeartBeatEvent(getStatus()))),
+        GuardedRunnable.guard(() -> {
+          NodeStatus status = getStatus();
+          bus.fire(new NodeHeartBeatEvent(status));
+          writeStatusToFile(status);
+        }),
         heartbeatPeriod.getSeconds(),
         heartbeatPeriod.getSeconds(),
         TimeUnit.SECONDS);
@@ -1082,6 +1093,24 @@ public class LocalNode extends Node implements Closeable {
             factories.stream().map(SessionSlot::getStereotype).collect(Collectors.toSet()));
   }
 
+  private void writeStatusToFile(NodeStatus status) {
+    if (statusFilePath.isEmpty()) {
+      return;
+    }
+
+    try {
+      String statusJson = JSON.toJson(status);
+      Files.write(
+          statusFilePath.get(),
+          statusJson.getBytes(),
+          StandardOpenOption.CREATE,
+          StandardOpenOption.WRITE,
+          StandardOpenOption.TRUNCATE_EXISTING);
+    } catch (IOException e) {
+      LOG.log(Level.WARNING, "Failed to write status to file: " + statusFilePath.get(), e);
+    }
+  }
+
   public static class Builder {
 
     private final Tracer tracer;
@@ -1176,7 +1205,8 @@ public class LocalNode extends Node implements Closeable {
           factories.build(),
           registrationSecret,
           managedDownloadsEnabled,
-          connectionLimitPerSession);
+          connectionLimitPerSession,
+          Optional.empty());
     }
 
     public Advanced advanced() {
@@ -1199,6 +1229,33 @@ public class LocalNode extends Node implements Closeable {
       public Advanced healthCheck(HealthCheck healthCheck) {
         Builder.this.healthCheck = Require.nonNull("Health check", healthCheck);
         return this;
+      }
+
+      public Advanced statusFile(Optional<String> statusFile) {
+        Optional<Path> statusFilePath = statusFile.map(Paths::get);
+        return new Advanced() {
+          @Override
+          public Node build() {
+            return new LocalNode(
+                tracer,
+                bus,
+                uri,
+                gridUri,
+                healthCheck,
+                maxSessions,
+                drainAfterSessionCount,
+                cdpEnabled,
+                bidiEnabled,
+                ticker,
+                sessionTimeout,
+                heartbeatPeriod,
+                factories.build(),
+                registrationSecret,
+                managedDownloadsEnabled,
+                connectionLimitPerSession,
+                statusFilePath);
+          }
+        };
       }
 
       public Node build() {

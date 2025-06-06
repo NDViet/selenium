@@ -19,11 +19,14 @@ package org.openqa.selenium.grid.node.local;
 
 import com.google.common.collect.ImmutableList;
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import org.openqa.selenium.ImmutableCapabilities;
 import org.openqa.selenium.grid.config.Config;
@@ -100,7 +103,7 @@ public class LocalNodeFactory {
           .forEach((caps, factories) -> factories.forEach(factory -> builder.add(caps, factory)));
     }
 
-    return builder.build();
+    return builder.advanced().statusFile(nodeOptions.getStatusFile()).build();
   }
 
   private static Collection<SessionFactory> createSessionFactory(
