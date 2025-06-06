@@ -193,6 +193,21 @@ class NodeOptionsTest {
   }
 
   @Test
+  void statusFileCanBeConfigured() {
+    Config config = new MapConfig(singletonMap("node", singletonMap("status-file", "node-status.json")));
+    NodeOptions nodeOptions = new NodeOptions(config);
+    assertThat(nodeOptions.getStatusFile()).isPresent();
+    assertThat(nodeOptions.getStatusFile().get()).isEqualTo("node-status.json");
+  }
+
+  @Test
+  void statusFileIsOptionalByDefault() {
+    Config config = new MapConfig(emptyMap());
+    NodeOptions nodeOptions = new NodeOptions(config);
+    assertThat(nodeOptions.getStatusFile()).isEmpty();
+  }
+
+  @Test
   void shouldDetectCorrectDriversOnMac() {
     assumeTrue(Platform.getCurrent().is(Platform.MAC));
     assumeFalse(
