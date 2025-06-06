@@ -167,7 +167,7 @@ public class NodeOptions {
   }
 
   public Optional<String> getStatusFile() {
-    return config.get(NODE_SECTION, "status-file");
+    return config.get(NODE_SECTION, "status-to-file");
   }
 
   public String getGridSubPath() {

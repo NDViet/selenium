@@ -284,12 +284,12 @@ public class NodeFlags implements HasRoles {
   public Boolean managedDownloadsEnabled;
 
   @Parameter(
-      names = {"--status-file"},
+      names = {"--status-to-file"},
       description =
           "Path to a local file where the Node will write its status information "
               + "in JSON format. This file will be updated periodically and can be "
               + "consumed by other services running on the same machine.")
-  @ConfigValue(section = NODE_SECTION, name = "status-file", example = "node-status.json")
+  @ConfigValue(section = NODE_SECTION, name = "status-to-file", example = "node-status.json")
   public String statusFile;
 
   @Override
