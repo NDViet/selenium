@@ -53,13 +53,17 @@ import java.net.URISyntaxException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -90,6 +94,8 @@ import org.openqa.selenium.grid.data.NodeHeartBeatEvent;
 import org.openqa.selenium.grid.data.NodeId;
 import org.openqa.selenium.grid.data.NodeStatus;
 import org.openqa.selenium.grid.data.Session;
+import org.openqa.selenium.grid.data.SessionClosedEvent;
+import org.openqa.selenium.grid.data.SessionHistoryEntry;
 import org.openqa.selenium.grid.data.Slot;
 import org.openqa.selenium.grid.data.SlotId;
 import org.openqa.selenium.grid.jmx.JMXHelper;
@@ -150,6 +156,9 @@ public class LocalNode extends Node implements Closeable {
   private final Runnable shutdown;
   private final ReadWriteLock drainLock = new ReentrantReadWriteLock();
   private final Optional<Path> statusFilePath;
+  private final Optional<Path> sessionHistoryFilePath;
+  private final Queue<SessionHistoryEntry> sessionHistory = new ConcurrentLinkedQueue<>();
+  private final Map<SessionId, Instant> sessionStartTimes = new ConcurrentHashMap<>();
 
   protected LocalNode(
       Tracer tracer,
@@ -168,7 +177,8 @@ public class LocalNode extends Node implements Closeable {
       Secret registrationSecret,
       boolean managedDownloadsEnabled,
       int connectionLimitPerSession,
-      Optional<Path> statusFilePath) {
+      Optional<Path> statusFilePath,
+      Optional<Path> sessionHistoryFilePath) {
     super(
         tracer,
         new NodeId(UUID.randomUUID()),
@@ -193,6 +203,7 @@ public class LocalNode extends Node implements Closeable {
     this.managedDownloadsEnabled = managedDownloadsEnabled;
     this.connectionLimitPerSession = connectionLimitPerSession;
     this.statusFilePath = statusFilePath;
+    this.sessionHistoryFilePath = sessionHistoryFilePath;
 
     this.healthCheck =
         healthCheck == null
@@ -291,6 +302,8 @@ public class LocalNode extends Node implements Closeable {
         heartbeatPeriod.getSeconds(),
         heartbeatPeriod.getSeconds(),
         TimeUnit.SECONDS);
+
+    bus.addListener(SessionClosedEvent.listener(this::recordSessionStop));
 
     shutdown =
         () -> {
@@ -536,6 +549,7 @@ public class LocalNode extends Node implements Closeable {
           downloadsTempFileSystem.put(session.getId(), downloadsTfs);
         }
         currentSessions.put(session.getId(), slotToUse);
+        sessionStartTimes.put(session.getId(), session.getStartTime());
 
         SessionId sessionId = session.getId();
         Capabilities caps = session.getCapabilities();
@@ -1111,6 +1125,35 @@ public class LocalNode extends Node implements Closeable {
     }
   }
 
+  private void recordSessionStop(SessionId sessionId) {
+    Instant startTime = sessionStartTimes.remove(sessionId);
+    if (startTime != null) {
+      Instant stopTime = Instant.now();
+      SessionHistoryEntry entry = new SessionHistoryEntry(sessionId, startTime, stopTime);
+      sessionHistory.offer(entry);
+      writeSessionHistoryToFile();
+    }
+  }
+
+  private void writeSessionHistoryToFile() {
+    if (sessionHistoryFilePath.isEmpty()) {
+      return;
+    }
+
+    try {
+      List<SessionHistoryEntry> historyList = new ArrayList<>(sessionHistory);
+      String historyJson = JSON.toJson(historyList);
+      Files.write(
+          sessionHistoryFilePath.get(),
+          historyJson.getBytes(),
+          StandardOpenOption.CREATE,
+          StandardOpenOption.WRITE,
+          StandardOpenOption.TRUNCATE_EXISTING);
+    } catch (IOException e) {
+      LOG.log(Level.WARNING, "Failed to write session history to file: " + sessionHistoryFilePath.get(), e);
+    }
+  }
+
   public static class Builder {
 
     private final Tracer tracer;
@@ -1206,6 +1249,7 @@ public class LocalNode extends Node implements Closeable {
           registrationSecret,
           managedDownloadsEnabled,
           connectionLimitPerSession,
+          Optional.empty(),
           Optional.empty());
     }
 
@@ -1232,7 +1276,12 @@ public class LocalNode extends Node implements Closeable {
       }
 
       public Advanced statusFile(Optional<String> statusFile) {
+        return sessionHistoryFile(statusFile, Optional.empty());
+      }
+
+      public Advanced sessionHistoryFile(Optional<String> statusFile, Optional<String> sessionHistoryFile) {
         Optional<Path> statusFilePath = statusFile.map(Paths::get);
+        Optional<Path> sessionHistoryFilePath = sessionHistoryFile.map(Paths::get);
         return new Advanced() {
           @Override
           public Node build() {
@@ -1253,7 +1302,8 @@ public class LocalNode extends Node implements Closeable {
                 registrationSecret,
                 managedDownloadsEnabled,
                 connectionLimitPerSession,
-                statusFilePath);
+                statusFilePath,
+                sessionHistoryFilePath);
           }
         };
       }

@@ -208,6 +208,21 @@ class NodeOptionsTest {
   }
 
   @Test
+  void sessionHistoryFileCanBeConfigured() {
+    Config config = new MapConfig(singletonMap("node", singletonMap("session-history-to-file", "session-history.json")));
+    NodeOptions nodeOptions = new NodeOptions(config);
+    assertThat(nodeOptions.getSessionHistoryFile()).isPresent();
+    assertThat(nodeOptions.getSessionHistoryFile().get()).isEqualTo("session-history.json");
+  }
+
+  @Test
+  void sessionHistoryFileIsOptionalByDefault() {
+    Config config = new MapConfig(emptyMap());
+    NodeOptions nodeOptions = new NodeOptions(config);
+    assertThat(nodeOptions.getSessionHistoryFile()).isEmpty();
+  }
+
+  @Test
   void shouldDetectCorrectDriversOnMac() {
     assumeTrue(Platform.getCurrent().is(Platform.MAC));
     assumeFalse(

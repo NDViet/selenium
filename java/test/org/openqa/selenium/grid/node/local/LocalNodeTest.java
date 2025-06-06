@@ -486,4 +486,64 @@ class LocalNodeTest {
     NodeStatus status = localNode.getStatus();
     assertThat(status).isNotNull();
   }
+
+  @Test
+  void sessionHistoryIsWrittenWhenConfigured() throws URISyntaxException, IOException {
+    Tracer tracer = DefaultTestTracer.createTracer();
+    EventBus bus = new GuavaEventBus();
+    URI uri = new URI("http://localhost:7890");
+    Capabilities stereotype = new ImmutableCapabilities("browserName", "cheese");
+
+    Path tempHistoryFile = Files.createTempFile("session-history", ".json");
+    tempHistoryFile.toFile().deleteOnExit();
+
+    LocalNode localNode =
+        LocalNode.builder(tracer, bus, uri, uri, registrationSecret)
+            .add(
+                stereotype,
+                new TestSessionFactory(
+                    (id, caps) -> new Session(id, uri, stereotype, caps, Instant.now())))
+            .advanced()
+            .sessionHistoryFile(Optional.empty(), Optional.of(tempHistoryFile.toString()))
+            .build();
+
+    Either<WebDriverException, CreateSessionResponse> response =
+        localNode.newSession(
+            new CreateSessionRequest(ImmutableSet.of(W3C), stereotype, ImmutableMap.of()));
+    assertThat(response.isRight()).isTrue();
+    
+    SessionId sessionId = response.right().getSession().getId();
+    localNode.stop(sessionId);
+
+    assertThat(Files.exists(tempHistoryFile)).isTrue();
+    String historyContent = Files.readString(tempHistoryFile);
+    assertThat(historyContent).isNotEmpty();
+    assertThat(historyContent).contains(sessionId.toString());
+    assertThat(historyContent).contains("startTime");
+    assertThat(historyContent).contains("stopTime");
+  }
+
+  @Test
+  void sessionHistoryIsNotWrittenWhenNotConfigured() throws URISyntaxException {
+    Tracer tracer = DefaultTestTracer.createTracer();
+    EventBus bus = new GuavaEventBus();
+    URI uri = new URI("http://localhost:7890");
+    Capabilities stereotype = new ImmutableCapabilities("browserName", "cheese");
+
+    LocalNode localNode =
+        LocalNode.builder(tracer, bus, uri, uri, registrationSecret)
+            .add(
+                stereotype,
+                new TestSessionFactory(
+                    (id, caps) -> new Session(id, uri, stereotype, caps, Instant.now())))
+            .build();
+
+    Either<WebDriverException, CreateSessionResponse> response =
+        localNode.newSession(
+            new CreateSessionRequest(ImmutableSet.of(W3C), stereotype, ImmutableMap.of()));
+    assertThat(response.isRight()).isTrue();
+    
+    SessionId sessionId = response.right().getSession().getId();
+    localNode.stop(sessionId);
+  }
 }
