@@ -1030,6 +1030,11 @@ public class LocalNode extends Node implements Closeable {
   }
 
   @Override
+  public List<SessionHistoryEntry> getSessionHistory() {
+    return new ArrayList<>(sessionHistory);
+  }
+
+  @Override
   public HealthCheck getHealthCheck() {
     return healthCheck;
   }
