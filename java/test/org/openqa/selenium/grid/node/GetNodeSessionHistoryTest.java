@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.openqa.selenium.grid.data.SessionHistoryEntry;
+import org.openqa.selenium.grid.data.SessionStatus;
 import org.openqa.selenium.json.Json;
 import org.openqa.selenium.remote.SessionId;
 import org.openqa.selenium.remote.http.HttpRequest;
@@ -23,7 +24,7 @@ class GetNodeSessionHistoryTest {
     SessionId sessionId = new SessionId("test-session");
     Instant startTime = Instant.now();
     Instant stopTime = startTime.plusSeconds(60);
-    SessionHistoryEntry entry = new SessionHistoryEntry(sessionId, startTime, stopTime);
+    SessionHistoryEntry entry = new SessionHistoryEntry(sessionId, startTime, stopTime, SessionStatus.SUCCESS);
     
     TestNode node = new TestNode(Arrays.asList(entry));
     GetNodeSessionHistory handler = new GetNodeSessionHistory(node);
@@ -34,6 +35,7 @@ class GetNodeSessionHistoryTest {
     String content = response.getContentString();
     assertThat(content).contains("test-session");
     assertThat(content).contains("value");
+    assertThat(content).contains("\"status\":\"SUCCESS\"");
     
     Json json = new Json();
     Object responseObj = json.toType(content, Object.class);
@@ -51,6 +53,33 @@ class GetNodeSessionHistoryTest {
     String content = response.getContentString();
     assertThat(content).contains("value");
     assertThat(content).contains("[]");
+  }
+
+  @Test
+  void shouldIncludeSessionStatusInResponse() {
+    SessionId sessionId1 = new SessionId("success-session");
+    SessionId sessionId2 = new SessionId("failed-session");
+    Instant startTime = Instant.now();
+    Instant stopTime = startTime.plusSeconds(60);
+    
+    SessionHistoryEntry successEntry = new SessionHistoryEntry(sessionId1, startTime, stopTime, SessionStatus.SUCCESS);
+    SessionHistoryEntry failedEntry = new SessionHistoryEntry(sessionId2, startTime, stopTime, SessionStatus.FAILED);
+    
+    TestNode node = new TestNode(Arrays.asList(successEntry, failedEntry));
+    GetNodeSessionHistory handler = new GetNodeSessionHistory(node);
+    
+    HttpResponse response = handler.execute(new HttpRequest(GET, "/"));
+    
+    assertThat(response.getStatus()).isEqualTo(200);
+    String content = response.getContentString();
+    assertThat(content).contains("success-session");
+    assertThat(content).contains("failed-session");
+    assertThat(content).contains("\"status\":\"SUCCESS\"");
+    assertThat(content).contains("\"status\":\"FAILED\"");
+    
+    Json json = new Json();
+    Object responseObj = json.toType(content, Object.class);
+    assertThat(responseObj).isNotNull();
   }
   
   private static class TestNode extends Node {

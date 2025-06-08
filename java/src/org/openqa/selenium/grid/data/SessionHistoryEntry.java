@@ -12,11 +12,17 @@ public class SessionHistoryEntry {
   private final SessionId sessionId;
   private final Instant startTime;
   private final Instant stopTime;
+  private final SessionStatus status;
 
-  public SessionHistoryEntry(SessionId sessionId, Instant startTime, Instant stopTime) {
+  public SessionHistoryEntry(SessionId sessionId, Instant startTime, Instant stopTime, SessionStatus status) {
     this.sessionId = Require.nonNull("Session ID", sessionId);
     this.startTime = Require.nonNull("Start time", startTime);
     this.stopTime = stopTime; // Can be null for ongoing sessions
+    this.status = Require.nonNull("Session status", status);
+  }
+
+  public SessionHistoryEntry(SessionId sessionId, Instant startTime, Instant stopTime) {
+    this(sessionId, startTime, stopTime, SessionStatus.SUCCESS);
   }
 
   public SessionId getSessionId() {
@@ -31,6 +37,10 @@ public class SessionHistoryEntry {
     return stopTime;
   }
 
+  public SessionStatus getStatus() {
+    return status;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -38,11 +48,12 @@ public class SessionHistoryEntry {
     SessionHistoryEntry that = (SessionHistoryEntry) o;
     return Objects.equals(sessionId, that.sessionId) &&
            Objects.equals(startTime, that.startTime) &&
-           Objects.equals(stopTime, that.stopTime);
+           Objects.equals(stopTime, that.stopTime) &&
+           Objects.equals(status, that.status);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(sessionId, startTime, stopTime);
+    return Objects.hash(sessionId, startTime, stopTime, status);
   }
 }

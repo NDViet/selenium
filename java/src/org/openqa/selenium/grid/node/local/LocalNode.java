@@ -304,7 +304,7 @@ public class LocalNode extends Node implements Closeable {
         heartbeatPeriod.getSeconds(),
         TimeUnit.SECONDS);
 
-    bus.addListener(SessionClosedEvent.listener(this::recordSessionStop));
+    bus.addListener(SessionClosedEvent.statusListener(this::recordSessionStopWithStatus));
 
     shutdown =
         () -> {
@@ -1131,11 +1131,13 @@ public class LocalNode extends Node implements Closeable {
     }
   }
 
-  private void recordSessionStop(SessionId sessionId) {
+  private void recordSessionStopWithStatus(SessionClosedEvent event) {
+    SessionId sessionId = event.getData(SessionId.class);
+    SessionStatus status = event.getStatus();
     Instant startTime = sessionStartTimes.remove(sessionId);
     if (startTime != null) {
       Instant stopTime = Instant.now();
-      SessionHistoryEntry entry = new SessionHistoryEntry(sessionId, startTime, stopTime);
+      SessionHistoryEntry entry = new SessionHistoryEntry(sessionId, startTime, stopTime, status);
       sessionHistory.offer(entry);
       writeSessionHistoryToFile();
     }

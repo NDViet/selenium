@@ -51,12 +51,15 @@ import org.openqa.selenium.grid.data.CreateSessionRequest;
 import org.openqa.selenium.grid.data.CreateSessionResponse;
 import org.openqa.selenium.grid.data.NodeStatus;
 import org.openqa.selenium.grid.data.Session;
+import org.openqa.selenium.grid.data.SessionHistoryEntry;
+import org.openqa.selenium.grid.data.SessionStatus;
 import org.openqa.selenium.grid.data.Slot;
 import org.openqa.selenium.grid.node.Node;
 import org.openqa.selenium.grid.security.Secret;
 import org.openqa.selenium.grid.testing.EitherAssert;
 import org.openqa.selenium.grid.testing.TestSessionFactory;
 import org.openqa.selenium.internal.Either;
+import org.openqa.selenium.json.Json;
 import org.openqa.selenium.remote.HttpSessionId;
 import org.openqa.selenium.remote.SessionId;
 import org.openqa.selenium.remote.http.HttpHandler;
@@ -575,5 +578,94 @@ class LocalNodeTest {
     assertThat(history.get(0).getSessionId()).isEqualTo(sessionId);
     assertThat(history.get(0).getStartTime()).isNotNull();
     assertThat(history.get(0).getStopTime()).isNotNull();
+    assertThat(history.get(0).getStatus()).isEqualTo(SessionStatus.SUCCESS);
+  }
+
+  @Test
+  void sessionHistoryIncludesStatusInJsonFile() throws URISyntaxException, IOException {
+    Tracer tracer = DefaultTestTracer.createTracer();
+    EventBus bus = new GuavaEventBus();
+    URI uri = new URI("http://localhost:7890");
+    Capabilities stereotype = new ImmutableCapabilities("browserName", "cheese");
+
+    Path tempHistoryFile = Files.createTempFile("session-history", ".json");
+    tempHistoryFile.toFile().deleteOnExit();
+
+    LocalNode localNode =
+        LocalNode.builder(tracer, bus, uri, uri, registrationSecret)
+            .add(
+                stereotype,
+                new TestSessionFactory(
+                    (id, caps) -> new Session(id, uri, stereotype, caps, Instant.now())))
+            .advanced()
+            .sessionHistoryFile(Optional.empty(), Optional.of(tempHistoryFile.toString()))
+            .build();
+
+    Either<WebDriverException, CreateSessionResponse> response =
+        localNode.newSession(
+            new CreateSessionRequest(ImmutableSet.of(W3C), stereotype, ImmutableMap.of()));
+    assertThat(response.isRight()).isTrue();
+    
+    SessionId sessionId = response.right().getSession().getId();
+    localNode.stop(sessionId);
+
+    assertThat(Files.exists(tempHistoryFile)).isTrue();
+    String historyContent = Files.readString(tempHistoryFile);
+    assertThat(historyContent).isNotEmpty();
+    assertThat(historyContent).contains(sessionId.toString());
+    assertThat(historyContent).contains("startTime");
+    assertThat(historyContent).contains("stopTime");
+    assertThat(historyContent).contains("\"status\":\"SUCCESS\"");
+  }
+
+  @Test
+  void sessionHistoryTracksFailedStatus() throws URISyntaxException, IOException {
+    Tracer tracer = DefaultTestTracer.createTracer();
+    EventBus bus = new GuavaEventBus();
+    URI uri = new URI("http://localhost:7890");
+    Capabilities stereotype = new ImmutableCapabilities("browserName", "cheese");
+
+    Path tempHistoryFile = Files.createTempFile("session-history", ".json");
+    tempHistoryFile.toFile().deleteOnExit();
+
+    LocalNode localNode =
+        LocalNode.builder(tracer, bus, uri, uri, registrationSecret)
+            .add(
+                stereotype,
+                new TestSessionFactory(
+                    (id, caps) -> new FailingSession(id, uri, stereotype, caps, Instant.now())))
+            .advanced()
+            .sessionHistoryFile(Optional.empty(), Optional.of(tempHistoryFile.toString()))
+            .build();
+
+    Either<WebDriverException, CreateSessionResponse> response =
+        localNode.newSession(
+            new CreateSessionRequest(ImmutableSet.of(W3C), stereotype, ImmutableMap.of()));
+    assertThat(response.isRight()).isTrue();
+    
+    SessionId sessionId = response.right().getSession().getId();
+    localNode.stop(sessionId);
+
+    List<SessionHistoryEntry> history = localNode.getSessionHistory();
+    assertThat(history).hasSize(1);
+    assertThat(history.get(0).getSessionId()).isEqualTo(sessionId);
+    assertThat(history.get(0).getStartTime()).isNotNull();
+    assertThat(history.get(0).getStopTime()).isNotNull();
+    assertThat(history.get(0).getStatus()).isEqualTo(SessionStatus.FAILED);
+
+    assertThat(Files.exists(tempHistoryFile)).isTrue();
+    String historyContent = Files.readString(tempHistoryFile);
+    assertThat(historyContent).contains("\"status\":\"FAILED\"");
+  }
+
+  private static class FailingSession extends Session {
+    public FailingSession(SessionId id, URI uri, Capabilities stereotype, Capabilities capabilities, Instant startTime) {
+      super(id, uri, stereotype, capabilities, startTime);
+    }
+
+    @Override
+    public void stop() {
+      throw new RuntimeException("Simulated session failure");
+    }
   }
 }

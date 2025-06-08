@@ -27,14 +27,30 @@ import org.openqa.selenium.remote.SessionId;
 public class SessionClosedEvent extends Event {
 
   private static final EventName SESSION_CLOSED = new EventName("session-closed");
+  private final SessionStatus status;
+
+  public SessionClosedEvent(SessionId id, SessionStatus status) {
+    super(SESSION_CLOSED, id);
+    this.status = Require.nonNull("Session status", status);
+  }
 
   public SessionClosedEvent(SessionId id) {
-    super(SESSION_CLOSED, id);
+    this(id, SessionStatus.SUCCESS);
+  }
+
+  public SessionStatus getStatus() {
+    return status;
   }
 
   public static EventListener<SessionId> listener(Consumer<SessionId> handler) {
     Require.nonNull("Handler", handler);
 
     return new EventListener<>(SESSION_CLOSED, SessionId.class, handler);
+  }
+
+  public static EventListener<SessionClosedEvent> statusListener(Consumer<SessionClosedEvent> handler) {
+    Require.nonNull("Handler", handler);
+
+    return new EventListener<>(SESSION_CLOSED, SessionClosedEvent.class, handler);
   }
 }

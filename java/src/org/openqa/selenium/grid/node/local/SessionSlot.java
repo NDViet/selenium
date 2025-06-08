@@ -37,6 +37,7 @@ import org.openqa.selenium.WebDriverInfo;
 import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.grid.data.CreateSessionRequest;
 import org.openqa.selenium.grid.data.SessionClosedEvent;
+import org.openqa.selenium.grid.data.SessionStatus;
 import org.openqa.selenium.grid.node.ActiveSession;
 import org.openqa.selenium.grid.node.SessionFactory;
 import org.openqa.selenium.grid.node.relay.RelaySessionFactory;
@@ -109,16 +110,19 @@ public class SessionSlot
     }
 
     SessionId id = currentSession.getId();
+    SessionStatus status = SessionStatus.SUCCESS;
     try {
       currentSession.stop();
     } catch (Exception e) {
       LOG.log(Level.WARNING, "Unable to cleanly close session", e);
+      status = SessionStatus.FAILED;
+    } finally {
+      currentSession = null;
+      connectionCounter.set(0);
+      release();
+      bus.fire(new SessionClosedEvent(id, status));
+      LOG.info(String.format("Stopping session %s", id));
     }
-    currentSession = null;
-    connectionCounter.set(0);
-    release();
-    bus.fire(new SessionClosedEvent(id));
-    LOG.info(String.format("Stopping session %s", id));
   }
 
   @Override
