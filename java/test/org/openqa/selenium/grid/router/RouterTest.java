@@ -50,7 +50,6 @@ import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.events.local.GuavaEventBus;
 import org.openqa.selenium.grid.data.RouterId;
 import org.openqa.selenium.grid.data.RouterDrainStarted;
-import org.openqa.selenium.grid.security.Secret;
 import org.openqa.selenium.grid.data.Availability;
 import org.openqa.selenium.grid.data.CreateSessionResponse;
 import org.openqa.selenium.grid.data.DefaultSlotMatcher;
@@ -157,7 +156,7 @@ class RouterTest {
     handler.addHandler(distributor);
 
     routerId = new RouterId(UUID.randomUUID());
-    router = new Router(tracer, clientFactory, sessions, queue, distributor, bus, routerId, registrationSecret);
+    router = new Router(tracer, clientFactory, sessions, queue, distributor, bus, routerId);
   }
 
   @Test
