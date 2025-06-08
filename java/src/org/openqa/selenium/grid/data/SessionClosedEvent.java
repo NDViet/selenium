@@ -22,6 +22,8 @@ import org.openqa.selenium.events.Event;
 import org.openqa.selenium.events.EventListener;
 import org.openqa.selenium.events.EventName;
 import org.openqa.selenium.internal.Require;
+import org.openqa.selenium.json.JsonException;
+import org.openqa.selenium.json.JsonInput;
 import org.openqa.selenium.remote.SessionId;
 
 public class SessionClosedEvent extends Event {
@@ -52,5 +54,32 @@ public class SessionClosedEvent extends Event {
     Require.nonNull("Handler", handler);
 
     return new EventListener<>(SESSION_CLOSED, SessionClosedEvent.class, handler);
+  }
+
+  private static SessionClosedEvent fromJson(JsonInput input) {
+    input.beginObject();
+    SessionId sessionId = null;
+    SessionStatus status = SessionStatus.SUCCESS;
+    
+    while (input.hasNext()) {
+      switch (input.nextName()) {
+        case "sessionId":
+          sessionId = input.read(SessionId.class);
+          break;
+        case "status":
+          status = input.read(SessionStatus.class);
+          break;
+        default:
+          input.skipValue();
+          break;
+      }
+    }
+    input.endObject();
+    
+    if (sessionId == null) {
+      throw new JsonException("SessionId is required for SessionClosedEvent");
+    }
+    
+    return new SessionClosedEvent(sessionId, status);
   }
 }
