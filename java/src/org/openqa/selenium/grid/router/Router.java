@@ -20,13 +20,20 @@ package org.openqa.selenium.grid.router;
 import static org.openqa.selenium.remote.http.Route.combine;
 import static org.openqa.selenium.remote.http.Route.get;
 import static org.openqa.selenium.remote.http.Route.matching;
+import static org.openqa.selenium.remote.http.Route.post;
+import static java.net.HttpURLConnection.HTTP_OK;
 
 import com.google.common.collect.ImmutableSet;
 import java.io.Closeable;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.openqa.selenium.events.EventBus;
+import org.openqa.selenium.grid.data.NodeId;
+import org.openqa.selenium.grid.data.RouterDrainStarted;
 import org.openqa.selenium.grid.distributor.Distributor;
 import org.openqa.selenium.grid.sessionmap.SessionMap;
 import org.openqa.selenium.grid.sessionqueue.NewSessionQueue;
 import org.openqa.selenium.internal.Require;
+import org.openqa.selenium.remote.http.Contents;
 import org.openqa.selenium.remote.http.HttpClient;
 import org.openqa.selenium.remote.http.HttpRequest;
 import org.openqa.selenium.remote.http.HttpResponse;
@@ -43,25 +50,36 @@ public class Router implements HasReadyState, Routable, Closeable {
   private final Distributor distributor;
   private final NewSessionQueue queue;
   private final HandleSession sessionHandler;
+  private final EventBus bus;
+  private final NodeId routerId;
+  private final AtomicBoolean draining = new AtomicBoolean(false);
 
   public Router(
       Tracer tracer,
       HttpClient.Factory clientFactory,
       SessionMap sessions,
       NewSessionQueue queue,
-      Distributor distributor) {
+      Distributor distributor,
+      EventBus bus,
+      NodeId routerId) {
     Require.nonNull("Tracer to use", tracer);
     Require.nonNull("HTTP client factory", clientFactory);
 
     this.sessions = Require.nonNull("Session map", sessions);
     this.queue = Require.nonNull("New Session Request Queue", queue);
     this.distributor = Require.nonNull("Distributor", distributor);
+    this.bus = Require.nonNull("Event bus", bus);
+    this.routerId = Require.nonNull("Router ID", routerId);
 
     this.sessionHandler = new HandleSession(tracer, clientFactory, sessions);
 
     routes =
         combine(
             get("/status").to(() -> new GridStatusHandler(tracer, distributor)),
+            post("/se/grid/router/drain").to(() -> req -> {
+              drain();
+              return new HttpResponse().setStatus(HTTP_OK).setContent(Contents.utf8String("Router drain initiated"));
+            }),
             sessions.with(new SpanDecorator(tracer, req -> "session_map")),
             queue.with(new SpanDecorator(tracer, req -> "session_queue")),
             distributor.with(new SpanDecorator(tracer, req -> "distributor")),
@@ -70,6 +88,9 @@ public class Router implements HasReadyState, Routable, Closeable {
 
   @Override
   public boolean isReady() {
+    if (draining.get()) {
+      return false;
+    }
     try {
       return ImmutableSet.of(distributor, sessions, queue).parallelStream()
           .map(HasReadyState::isReady)
@@ -77,6 +98,15 @@ public class Router implements HasReadyState, Routable, Closeable {
     } catch (RuntimeException e) {
       return false;
     }
+  }
+
+  public void drain() {
+    draining.set(true);
+    bus.fire(new RouterDrainStarted(routerId));
+  }
+
+  public boolean isDraining() {
+    return draining.get();
   }
 
   @Override

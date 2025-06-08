@@ -28,6 +28,7 @@ import static org.openqa.selenium.grid.data.Availability.UP;
 import static org.openqa.selenium.json.Json.MAP_TYPE;
 import static org.openqa.selenium.remote.Dialect.W3C;
 import static org.openqa.selenium.remote.http.HttpMethod.GET;
+import static org.openqa.selenium.remote.http.HttpMethod.POST;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -38,6 +39,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +48,8 @@ import org.openqa.selenium.ImmutableCapabilities;
 import org.openqa.selenium.SessionNotCreatedException;
 import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.events.local.GuavaEventBus;
+import org.openqa.selenium.grid.data.NodeId;
+import org.openqa.selenium.grid.data.RouterDrainStarted;
 import org.openqa.selenium.grid.data.Availability;
 import org.openqa.selenium.grid.data.CreateSessionResponse;
 import org.openqa.selenium.grid.data.DefaultSlotMatcher;
@@ -82,6 +86,7 @@ class RouterTest {
   private Distributor distributor;
   private Router router;
   private Secret registrationSecret;
+  private NodeId routerId;
 
   private static Map<String, Object> getStatus(Router router) {
     HttpResponse response = router.execute(new HttpRequest(GET, "/status"));
@@ -150,7 +155,8 @@ class RouterTest {
             Duration.ofSeconds(30));
     handler.addHandler(distributor);
 
-    router = new Router(tracer, clientFactory, sessions, queue, distributor);
+    routerId = new NodeId(UUID.randomUUID());
+    router = new Router(tracer, clientFactory, sessions, queue, distributor, bus, routerId);
   }
 
   @Test
@@ -298,5 +304,44 @@ class RouterTest {
         .advanced()
         .healthCheck(() -> new HealthCheck.Result(availability.get(), "TL;DR"))
         .build();
+  }
+
+  @Test
+  void testDrainSetsRouterToDrainingState() {
+    assertThat(router.isDraining()).isFalse();
+    
+    router.drain();
+    
+    assertThat(router.isDraining()).isTrue();
+  }
+
+  @Test
+  void testIsReadyReturnsFalseWhenDraining() {
+    router.drain();
+    
+    assertThat(router.isReady()).isFalse();
+  }
+
+  @Test
+  void testDrainEndpointReturnsOk() {
+    HttpRequest request = new HttpRequest(POST, "/se/grid/router/drain");
+    
+    HttpResponse response = router.execute(request);
+    
+    assertThat(response.getStatus()).isEqualTo(200);
+    assertThat(response.getContentString()).contains("Router drain initiated");
+    assertThat(router.isDraining()).isTrue();
+  }
+
+  @Test
+  void testDrainFiresRouterDrainStartedEvent() {
+    AtomicBoolean eventFired = new AtomicBoolean(false);
+    bus.addListener(RouterDrainStarted.listener(nodeId -> eventFired.set(true)));
+    
+    assertThat(eventFired.get()).isFalse();
+    
+    router.drain();
+    
+    assertThat(eventFired.get()).isTrue();
   }
 }
