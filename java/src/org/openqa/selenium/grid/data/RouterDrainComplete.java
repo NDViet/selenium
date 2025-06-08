@@ -12,13 +12,13 @@ import org.openqa.selenium.internal.Require;
 public class RouterDrainComplete extends Event {
   private static final EventName ROUTER_DRAIN_COMPLETE = new EventName("router-drain-complete");
 
-  public RouterDrainComplete(NodeId id) {
+  public RouterDrainComplete(RouterId id) {
     super(ROUTER_DRAIN_COMPLETE, id);
   }
 
-  public static EventListener<NodeId> listener(Consumer<NodeId> handler) {
+  public static EventListener<RouterId> listener(Consumer<RouterId> handler) {
     Require.nonNull("Handler", handler);
 
-    return new EventListener<>(ROUTER_DRAIN_COMPLETE, NodeId.class, handler);
+    return new EventListener<>(ROUTER_DRAIN_COMPLETE, RouterId.class, handler);
   }
 }

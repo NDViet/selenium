@@ -13,13 +13,13 @@ public class RouterDrainStarted extends Event {
 
   private static final EventName ROUTER_DRAIN_STARTED = new EventName("router-drain-started");
 
-  public RouterDrainStarted(NodeId id) {
+  public RouterDrainStarted(RouterId id) {
     super(ROUTER_DRAIN_STARTED, id);
   }
 
-  public static EventListener<NodeId> listener(Consumer<NodeId> handler) {
+  public static EventListener<RouterId> listener(Consumer<RouterId> handler) {
     Require.nonNull("Handler", handler);
 
-    return new EventListener<>(ROUTER_DRAIN_STARTED, NodeId.class, handler);
+    return new EventListener<>(ROUTER_DRAIN_STARTED, RouterId.class, handler);
   }
 }

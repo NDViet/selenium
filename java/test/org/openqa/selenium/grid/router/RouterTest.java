@@ -48,7 +48,7 @@ import org.openqa.selenium.ImmutableCapabilities;
 import org.openqa.selenium.SessionNotCreatedException;
 import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.events.local.GuavaEventBus;
-import org.openqa.selenium.grid.data.NodeId;
+import org.openqa.selenium.grid.data.RouterId;
 import org.openqa.selenium.grid.data.RouterDrainStarted;
 import org.openqa.selenium.grid.data.Availability;
 import org.openqa.selenium.grid.data.CreateSessionResponse;
@@ -86,7 +86,7 @@ class RouterTest {
   private Distributor distributor;
   private Router router;
   private Secret registrationSecret;
-  private NodeId routerId;
+  private RouterId routerId;
 
   private static Map<String, Object> getStatus(Router router) {
     HttpResponse response = router.execute(new HttpRequest(GET, "/status"));
@@ -155,7 +155,7 @@ class RouterTest {
             Duration.ofSeconds(30));
     handler.addHandler(distributor);
 
-    routerId = new NodeId(UUID.randomUUID());
+    routerId = new RouterId(UUID.randomUUID());
     router = new Router(tracer, clientFactory, sessions, queue, distributor, bus, routerId);
   }
 
@@ -336,7 +336,7 @@ class RouterTest {
   @Test
   void testDrainFiresRouterDrainStartedEvent() {
     AtomicBoolean eventFired = new AtomicBoolean(false);
-    bus.addListener(RouterDrainStarted.listener(nodeId -> eventFired.set(true)));
+    bus.addListener(RouterDrainStarted.listener(routerId -> eventFired.set(true)));
     
     assertThat(eventFired.get()).isFalse();
     

@@ -27,7 +27,7 @@ import com.google.common.collect.ImmutableSet;
 import java.io.Closeable;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.openqa.selenium.events.EventBus;
-import org.openqa.selenium.grid.data.NodeId;
+import org.openqa.selenium.grid.data.RouterId;
 import org.openqa.selenium.grid.data.RouterDrainStarted;
 import org.openqa.selenium.grid.distributor.Distributor;
 import org.openqa.selenium.grid.sessionmap.SessionMap;
@@ -51,7 +51,7 @@ public class Router implements HasReadyState, Routable, Closeable {
   private final NewSessionQueue queue;
   private final HandleSession sessionHandler;
   private final EventBus bus;
-  private final NodeId routerId;
+  private final RouterId routerId;
   private final AtomicBoolean draining = new AtomicBoolean(false);
 
   public Router(
@@ -61,7 +61,7 @@ public class Router implements HasReadyState, Routable, Closeable {
       NewSessionQueue queue,
       Distributor distributor,
       EventBus bus,
-      NodeId routerId) {
+      RouterId routerId) {
     Require.nonNull("Tracer to use", tracer);
     Require.nonNull("HTTP client factory", clientFactory);
 

@@ -57,7 +57,7 @@ import org.openqa.selenium.grid.router.ProxyWebsocketsIntoGrid;
 import org.openqa.selenium.grid.router.Router;
 import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.events.local.GuavaEventBus;
-import org.openqa.selenium.grid.data.NodeId;
+import org.openqa.selenium.grid.data.RouterId;
 import org.openqa.selenium.grid.security.BasicAuthenticationFilter;
 import org.openqa.selenium.grid.security.Secret;
 import org.openqa.selenium.grid.security.SecretOptions;
@@ -129,7 +129,7 @@ public class RouterServer extends TemplateGridServerCommand {
     Secret secret = secretOptions.getRegistrationSecret();
 
     EventBus bus = new GuavaEventBus();
-    NodeId routerId = new NodeId(java.util.UUID.randomUUID());
+    RouterId routerId = new RouterId(java.util.UUID.randomUUID());
 
     SessionMapOptions sessionsOptions = new SessionMapOptions(config);
     SessionMap sessions = sessionsOptions.getSessionMap();
