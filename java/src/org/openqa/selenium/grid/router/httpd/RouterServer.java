@@ -153,7 +153,7 @@ public class RouterServer extends TemplateGridServerCommand {
     RouterOptions routerOptions = new RouterOptions(config);
     String subPath = routerOptions.subPath();
 
-    Router router = new Router(tracer, clientFactory, sessions, queue, distributor, bus, routerId);
+    Router router = new Router(tracer, clientFactory, sessions, queue, distributor, bus, routerId, secret);
     Routable routerWithSpecChecks = router.with(networkOptions.getSpecComplianceChecks());
 
     Routable appendRoute =

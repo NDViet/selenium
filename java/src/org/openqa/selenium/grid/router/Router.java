@@ -30,6 +30,8 @@ import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.grid.data.RouterId;
 import org.openqa.selenium.grid.data.RouterDrainStarted;
 import org.openqa.selenium.grid.distributor.Distributor;
+import org.openqa.selenium.grid.security.RequiresSecretFilter;
+import org.openqa.selenium.grid.security.Secret;
 import org.openqa.selenium.grid.sessionmap.SessionMap;
 import org.openqa.selenium.grid.sessionqueue.NewSessionQueue;
 import org.openqa.selenium.internal.Require;
@@ -61,7 +63,8 @@ public class Router implements HasReadyState, Routable, Closeable {
       NewSessionQueue queue,
       Distributor distributor,
       EventBus bus,
-      RouterId routerId) {
+      RouterId routerId,
+      Secret registrationSecret) {
     Require.nonNull("Tracer to use", tracer);
     Require.nonNull("HTTP client factory", clientFactory);
 
@@ -70,7 +73,9 @@ public class Router implements HasReadyState, Routable, Closeable {
     this.distributor = Require.nonNull("Distributor", distributor);
     this.bus = Require.nonNull("Event bus", bus);
     this.routerId = Require.nonNull("Router ID", routerId);
+    Require.nonNull("Registration secret", registrationSecret);
 
+    RequiresSecretFilter requiresSecret = new RequiresSecretFilter(registrationSecret);
     this.sessionHandler = new HandleSession(tracer, clientFactory, sessions);
 
     routes =
@@ -79,7 +84,7 @@ public class Router implements HasReadyState, Routable, Closeable {
             post("/se/grid/router/drain").to(() -> req -> {
               drain();
               return new HttpResponse().setStatus(HTTP_OK).setContent(Contents.utf8String("Router drain initiated"));
-            }),
+            }).with(requiresSecret),
             sessions.with(new SpanDecorator(tracer, req -> "session_map")),
             queue.with(new SpanDecorator(tracer, req -> "session_queue")),
             distributor.with(new SpanDecorator(tracer, req -> "distributor")),
