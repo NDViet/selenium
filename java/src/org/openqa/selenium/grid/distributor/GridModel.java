@@ -47,6 +47,8 @@ import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.grid.data.SessionClosedEvent;
 import org.openqa.selenium.grid.data.Slot;
 import org.openqa.selenium.grid.data.SlotId;
+import org.openqa.selenium.grid.distributor.config.GridModelOptions;
+import org.openqa.selenium.grid.distributor.storage.GridModelStorage;
 import org.openqa.selenium.grid.server.EventBusOptions;
 import org.openqa.selenium.internal.Debug;
 import org.openqa.selenium.internal.Require;
@@ -61,13 +63,12 @@ public class GridModel {
   private static final int PURGE_TIMEOUT_MULTIPLIER = 4;
   private static final int UNHEALTHY_THRESHOLD = 4;
   private final ReadWriteLock lock = new ReentrantReadWriteLock(/* fair */ true);
-  private final Set<NodeStatus> nodes = Collections.newSetFromMap(new ConcurrentHashMap<>());
-  private final Map<NodeId, Instant> nodePurgeTimes = new ConcurrentHashMap<>();
-  private final Map<NodeId, Integer> nodeHealthCount = new ConcurrentHashMap<>();
+  private final GridModelStorage storage;
   private final EventBus events;
 
-  public GridModel(EventBus events) {
+  public GridModel(EventBus events, GridModelStorage storage) {
     this.events = Require.nonNull("Event bus", events);
+    this.storage = Require.nonNull("Grid model storage", storage);
 
     this.events.addListener(NodeDrainStarted.listener(nodeId -> setAvailability(nodeId, DRAINING)));
     this.events.addListener(SessionClosedEvent.listener(this::release));
@@ -75,8 +76,9 @@ public class GridModel {
 
   public static GridModel create(Config config) {
     EventBus bus = new EventBusOptions(config).getEventBus();
+    GridModelStorage storage = new GridModelOptions(config).getGridModelStorage();
 
-    return new GridModel(bus);
+    return new GridModel(bus, storage);
   }
 
   public void add(NodeStatus node) {
@@ -86,6 +88,7 @@ public class GridModel {
     writeLock.lock();
     try {
       // If we've already added the node, remove it.
+      Set<NodeStatus> nodes = storage.getAllNodes();
       Iterator<NodeStatus> iterator = nodes.iterator();
       while (iterator.hasNext()) {
         NodeStatus next = iterator.next();
@@ -95,12 +98,12 @@ public class GridModel {
         // an existing node.
         if (next.getNodeId().equals(node.getNodeId())
             && next.getExternalUri().equals(node.getExternalUri())) {
-          iterator.remove();
+          storage.removeNode(next.getNodeId());
 
           LOG.log(Debug.getDebugLogLevel(), "Refreshing node with id {0}", node.getNodeId());
           NodeStatus refreshed = rewrite(node, next.getAvailability());
-          nodes.add(refreshed);
-          nodePurgeTimes.put(refreshed.getNodeId(), Instant.now());
+          storage.addNode(refreshed);
+          storage.setPurgeTime(refreshed.getNodeId(), Instant.now());
           updateHealthCheckCount(refreshed.getNodeId(), refreshed.getAvailability());
 
           return;
@@ -117,7 +120,7 @@ public class GridModel {
           // Send the previous state to allow cleaning up the old node related resources.
           // Nodes are initially added in the "down" state, so the new state must be ignored.
           events.fire(new NodeRestartedEvent(next));
-          iterator.remove();
+          storage.removeNode(next.getNodeId());
           break;
         }
 
@@ -129,7 +132,7 @@ public class GridModel {
               String.format(
                   "Re-adding node with id %s and URI %s.",
                   node.getNodeId(), node.getExternalUri()));
-          iterator.remove();
+          storage.removeNode(next.getNodeId());
           break;
         }
       }
@@ -140,8 +143,8 @@ public class GridModel {
           "Adding node with id {0} and URI {1}",
           new Object[] {node.getNodeId(), node.getExternalUri()});
       NodeStatus refreshed = rewrite(node, DOWN);
-      nodes.add(refreshed);
-      nodePurgeTimes.put(refreshed.getNodeId(), Instant.now());
+      storage.addNode(refreshed);
+      storage.setPurgeTime(refreshed.getNodeId(), Instant.now());
       updateHealthCheckCount(refreshed.getNodeId(), refreshed.getAvailability());
     } finally {
       writeLock.unlock();
@@ -154,23 +157,21 @@ public class GridModel {
     Lock writeLock = lock.writeLock();
     writeLock.lock();
     try {
-      Iterator<NodeStatus> iterator = nodes.iterator();
-      while (iterator.hasNext()) {
-        NodeStatus node = iterator.next();
-
+      Set<NodeStatus> nodes = storage.getAllNodes();
+      for (NodeStatus node : nodes) {
         if (node.getNodeId().equals(status.getNodeId())) {
-          iterator.remove();
+          storage.removeNode(node.getNodeId());
 
           // if the node was marked as "down", keep it down until a healthcheck passes:
           // just because the node can hit the event bus doesn't mean it's reachable
           if (node.getAvailability() == DOWN) {
-            nodes.add(rewrite(status, DOWN));
+            storage.addNode(rewrite(status, DOWN));
           } else {
             // Otherwise, trust what it tells us.
-            nodes.add(status);
+            storage.addNode(status);
           }
 
-          nodePurgeTimes.put(status.getNodeId(), Instant.now());
+          storage.setPurgeTime(status.getNodeId(), Instant.now());
 
           return;
         }
@@ -188,13 +189,13 @@ public class GridModel {
     try {
       NodeStatus node = getNode(nodeStatus.getNodeId());
       if (node != null) {
-        nodePurgeTimes.put(node.getNodeId(), Instant.now());
+        storage.setPurgeTime(node.getNodeId(), Instant.now());
         // Covers the case where the Node might be DOWN in the Grid model (e.g. Node lost
         // connectivity for a while). The Node reports itself back as UP.
         if (node.getAvailability() != nodeStatus.getAvailability()
             && nodeStatus.getAvailability() == UP) {
-          nodes.remove(node);
-          nodes.add(nodeStatus);
+          storage.removeNode(node.getNodeId());
+          storage.addNode(nodeStatus);
         }
       }
     } finally {
@@ -208,9 +209,9 @@ public class GridModel {
     Lock writeLock = lock.writeLock();
     writeLock.lock();
     try {
-      nodes.removeIf(n -> n.getNodeId().equals(id));
-      nodePurgeTimes.remove(id);
-      nodeHealthCount.remove(id);
+      storage.removeNode(id);
+      storage.removePurgeTime(id);
+      storage.removeHealthCount(id);
     } finally {
       writeLock.unlock();
     }
@@ -223,9 +224,9 @@ public class GridModel {
       Map<NodeStatus, NodeStatus> replacements = new HashMap<>();
       Set<NodeStatus> toRemove = new HashSet<>();
 
-      for (NodeStatus node : nodes) {
+      for (NodeStatus node : storage.getAllNodes()) {
         NodeId id = node.getNodeId();
-        if (nodeHealthCount.getOrDefault(id, 0) > UNHEALTHY_THRESHOLD) {
+        if (storage.getHealthCount(id) > UNHEALTHY_THRESHOLD) {
           LOG.info(
               String.format(
                   "Removing Node %s (uri: %s), unhealthy threshold has been reached",
@@ -235,7 +236,10 @@ public class GridModel {
         }
 
         Instant now = Instant.now();
-        Instant lastTouched = nodePurgeTimes.getOrDefault(id, Instant.now());
+        Instant lastTouched = storage.getPurgeTime(id);
+        if (lastTouched == null) {
+          lastTouched = Instant.now();
+        }
         Instant lostTime =
             lastTouched.plus(node.getHeartbeatPeriod().multipliedBy(PURGE_TIMEOUT_MULTIPLIER / 2));
         Instant deadTime =
@@ -247,7 +251,7 @@ public class GridModel {
                   "Switching Node %s (uri: %s) from UP to DOWN",
                   node.getNodeId(), node.getExternalUri()));
           replacements.put(node, rewrite(node, DOWN));
-          nodePurgeTimes.put(id, Instant.now());
+          storage.setPurgeTime(id, Instant.now());
         } else if (node.getAvailability() == DOWN && deadTime.isBefore(now)) {
           LOG.info(
               String.format(
@@ -259,14 +263,14 @@ public class GridModel {
 
       replacements.forEach(
           (before, after) -> {
-            nodes.remove(before);
-            nodes.add(after);
+            storage.removeNode(before.getNodeId());
+            storage.addNode(after);
           });
       toRemove.forEach(
           node -> {
-            nodes.remove(node);
-            nodePurgeTimes.remove(node.getNodeId());
-            nodeHealthCount.remove(node.getNodeId());
+            storage.removeNode(node.getNodeId());
+            storage.removePurgeTime(node.getNodeId());
+            storage.removeHealthCount(node.getNodeId());
             events.fire(new NodeRemovedEvent(node));
           });
     } finally {
@@ -289,7 +293,7 @@ public class GridModel {
 
       if (availability.equals(node.getAvailability())) {
         if (node.getAvailability() == UP) {
-          nodePurgeTimes.put(node.getNodeId(), Instant.now());
+          storage.setPurgeTime(node.getNodeId(), Instant.now());
         }
       } else {
         LOG.info(
@@ -298,9 +302,9 @@ public class GridModel {
                 id, node.getExternalUri(), node.getAvailability(), availability));
 
         NodeStatus refreshed = rewrite(node, availability);
-        nodes.remove(node);
-        nodes.add(refreshed);
-        nodePurgeTimes.put(node.getNodeId(), Instant.now());
+        storage.removeNode(node.getNodeId());
+        storage.addNode(refreshed);
+        storage.setPurgeTime(node.getNodeId(), Instant.now());
       }
     } finally {
       writeLock.unlock();
@@ -350,7 +354,7 @@ public class GridModel {
     Lock readLock = this.lock.readLock();
     readLock.lock();
     try {
-      return ImmutableSet.copyOf(nodes);
+      return ImmutableSet.copyOf(storage.getAllNodes());
     } finally {
       readLock.unlock();
     }
@@ -362,7 +366,7 @@ public class GridModel {
     Lock readLock = lock.readLock();
     readLock.lock();
     try {
-      return nodes.stream().filter(n -> n.getNodeId().equals(id)).findFirst().orElse(null);
+      return storage.getAllNodes().stream().filter(n -> n.getNodeId().equals(id)).findFirst().orElse(null);
     } finally {
       readLock.unlock();
     }
@@ -390,7 +394,7 @@ public class GridModel {
     Lock writeLock = lock.writeLock();
     writeLock.lock();
     try {
-      for (NodeStatus node : nodes) {
+      for (NodeStatus node : storage.getAllNodes()) {
         for (Slot slot : node.getSlots()) {
           if (slot.getSession() == null) {
             continue;
@@ -488,16 +492,16 @@ public class GridModel {
     Lock writeLock = lock.writeLock();
     writeLock.lock();
     try {
-      int unhealthyCount = nodeHealthCount.getOrDefault(id, 0);
+      int unhealthyCount = storage.getHealthCount(id);
 
       // Keep track of consecutive number of times the Node health check fails
       if (availability.equals(DOWN)) {
-        nodeHealthCount.put(id, unhealthyCount + 1);
+        storage.setHealthCount(id, unhealthyCount + 1);
       }
 
       // If the Node is healthy again before crossing the threshold, then reset the count.
       if (unhealthyCount <= UNHEALTHY_THRESHOLD && availability.equals(UP)) {
-        nodeHealthCount.put(id, 0);
+        storage.setHealthCount(id, 0);
       }
     } finally {
       writeLock.unlock();
@@ -516,8 +520,8 @@ public class GridModel {
 
     NodeStatus node = getNode(status.getNodeId());
 
-    nodes.remove(node);
-    nodes.add(
+    storage.removeNode(node.getNodeId());
+    storage.addNode(
         new NodeStatus(
             status.getNodeId(),
             status.getExternalUri(),

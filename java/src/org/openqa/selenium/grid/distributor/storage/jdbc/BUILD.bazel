@@ -1,0 +1,17 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//java:defs.bzl", "java_library")
+
+java_library(
+    name = "jdbc",
+    srcs = glob(["*.java"]),
+    visibility = [
+        "//java/src/org/openqa/selenium/grid/distributor/config:__pkg__",
+        "//java/test/org/openqa/selenium/grid:__subpackages__",
+    ],
+    deps = [
+        "//java/src/org/openqa/selenium/grid/data",
+        "//java/src/org/openqa/selenium/grid/distributor/storage",
+        "//java/src/org/openqa/selenium/internal",
+        "//java/src/org/openqa/selenium/json",
+    ],
+)

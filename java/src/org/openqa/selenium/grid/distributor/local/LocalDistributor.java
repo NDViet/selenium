@@ -188,7 +188,8 @@ public class LocalDistributor extends Distributor implements Closeable {
       Duration sessionRequestRetryInterval,
       int newSessionThreadPoolSize,
       SlotMatcher slotMatcher,
-      Duration purgeNodesInterval) {
+      Duration purgeNodesInterval,
+      Config config) {
     super(tracer, clientFactory, registrationSecret);
     this.tracer = Require.nonNull("Tracer", tracer);
     this.bus = Require.nonNull("Event bus", bus);
@@ -198,7 +199,7 @@ public class LocalDistributor extends Distributor implements Closeable {
     this.slotSelector = Require.nonNull("Slot selector", slotSelector);
     this.registrationSecret = Require.nonNull("Registration secret", registrationSecret);
     this.healthcheckInterval = Require.nonNull("Health check interval", healthcheckInterval);
-    this.model = new GridModel(bus);
+    this.model = GridModel.create(config);
     this.nodes = new ConcurrentHashMap<>();
     this.rejectUnsupportedCaps = rejectUnsupportedCaps;
     this.slotMatcher = slotMatcher;
@@ -284,7 +285,8 @@ public class LocalDistributor extends Distributor implements Closeable {
         newSessionQueueOptions.getSessionRequestRetryInterval(),
         distributorOptions.getNewSessionThreadPoolSize(),
         distributorOptions.getSlotMatcher(),
-        distributorOptions.getPurgeNodesInterval());
+        distributorOptions.getPurgeNodesInterval(),
+        config);
   }
 
   @Override

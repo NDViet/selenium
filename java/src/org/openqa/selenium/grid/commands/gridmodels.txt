@@ -1,0 +1,105 @@
+Selenium 4 Grid ships with GridModel storage abstraction.
+
+A GridModel is responsible for managing the state of nodes in a Selenium Grid, including their availability, health counts, and purge times. The GridModel uses a storage abstraction that allows different backend implementations for persisting node data. As of Selenium 4, we offer the following types of data store.
+
+## LocalGridModelStorage (Default)
+
+`LocalGridModelStorage` uses in-memory storage for node data. This is the default implementation and requires no additional configuration:
+
+```
+java -jar selenium.jar distributor
+```
+
+## RedisGridModelStorage
+
+`RedisGridModelStorage` uses Redis as datastore for GridModel data. It stores node information using the following Redis key patterns:
+- `gridmodel:nodes:{nodeId}` for NodeStatus objects
+- `gridmodel:purge:{nodeId}` for purge times  
+- `gridmodel:health:{nodeId}` for health counts
+
+To start the Distributor with Redis-backed GridModel storage, run the following command:
+
+```
+GRIDMODEL_IMPLEMENTATION=org.openqa.selenium.grid.distributor.storage.redis.RedisGridModelStorage \
+SESSIONS_IMPLEMENTATION=org.openqa.selenium.grid.sessionmap.redis.RedisBackedSessionMap \
+SESSIONS_SCHEME=redis \
+java -jar selenium.jar \
+  --ext $(coursier fetch -p org.seleniumhq.selenium:selenium-session-map-redis:4.1.2) \
+  distributor --sessions-host "<redis_host>" --sessions-port <redis_port>
+```
+
+## JdbcGridModelStorage
+
+The `JdbcGridModelStorage` uses JDBC to talk to any supported database for GridModel storage.
+
+The table names used to store GridModel data are:
+- `grid_nodes` - stores node status information
+- `grid_purge_times` - stores node purge timestamps
+- `grid_health_counts` - stores node health check counts
+
+The `grid_nodes` table consists of three columns: `node_id` (VARCHAR), `node_data` (TEXT), `availability` (VARCHAR)
+The `grid_purge_times` table consists of two columns: `node_id` (VARCHAR), `purge_time` (TIMESTAMP)
+The `grid_health_counts` table consists of two columns: `node_id` (VARCHAR), `health_count` (INTEGER)
+
+Prerequisites
+
+1. Ensure the appropriate JDBC driver jar is downloaded on the host machine.
+
+2. The required tables will be created automatically when the JdbcGridModelStorage is first used, but you can also create them manually:
+
+```
+CREATE TABLE grid_nodes (
+    node_id VARCHAR(256) PRIMARY KEY,
+    node_data TEXT NOT NULL,
+    availability VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE grid_purge_times (
+    node_id VARCHAR(256) PRIMARY KEY,
+    purge_time TIMESTAMP NOT NULL
+);
+
+CREATE TABLE grid_health_counts (
+    node_id VARCHAR(256) PRIMARY KEY,
+    health_count INTEGER NOT NULL
+);
+```
+
+To start the Distributor with JDBC-backed GridModel storage:
+
+```
+GRIDMODEL_IMPLEMENTATION=org.openqa.selenium.grid.distributor.storage.jdbc.JdbcGridModelStorage \
+SESSIONS_IMPLEMENTATION=org.openqa.selenium.grid.sessionmap.jdbc.JdbcBackedSessionMap \
+SESSIONS_SCHEME=jdbc \
+java -jar selenium.jar \
+  --ext $(coursier fetch -p org.seleniumhq.selenium:selenium-session-map-jdbc:4.1.2 org.postgresql:postgresql:42.2.14.jre7) \
+  distributor \
+  --jdbc-user "<jdbc_user>" --jdbc-password "<jdbc_password>" \
+  --jdbc-url "<jdbc_url>"
+```
+
+## Configuration
+
+GridModel storage can be configured using the `gridmodel` section in your configuration:
+
+```
+[gridmodel]
+implementation = "org.openqa.selenium.grid.distributor.storage.redis.RedisGridModelStorage"
+```
+
+The available implementations are:
+- `org.openqa.selenium.grid.distributor.storage.local.LocalGridModelStorage` (default)
+- `org.openqa.selenium.grid.distributor.storage.redis.RedisGridModelStorage`
+- `org.openqa.selenium.grid.distributor.storage.jdbc.JdbcGridModelStorage`
+
+## Benefits
+
+Using external GridModel storage provides several benefits:
+
+1. **Persistence**: Node state survives Distributor restarts when using Redis or JDBC backends
+2. **Scalability**: Multiple Distributor instances can share the same GridModel state
+3. **High Availability**: GridModel data is not lost if a single Distributor instance fails
+4. **Monitoring**: External storage allows for better observability of Grid state
+5. **Backup and Recovery**: Database-backed storage enables standard backup and recovery procedures
+
+The Redis and JDBC implementations are particularly useful in containerized environments where Distributor pods may be frequently restarted or scaled.
