@@ -1,0 +1,55 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//java:defs.bzl", "java_test_suite")
+
+java_test_suite(
+    name = "redis",
+    size = "medium",
+    srcs = glob(
+        ["*.java"],
+        exclude = ["RedisIntegrationTest.java"],
+    ),
+    deps = [
+        "//java/src/org/openqa/selenium:core",
+        "//java/src/org/openqa/selenium/events",
+        "//java/src/org/openqa/selenium/events/local",
+        "//java/src/org/openqa/selenium/grid/data",
+        "//java/src/org/openqa/selenium/grid/distributor/redis",
+        "//java/src/org/openqa/selenium/grid/distributor/selector",
+        "//java/src/org/openqa/selenium/grid/node",
+        "//java/src/org/openqa/selenium/grid/security",
+        "//java/src/org/openqa/selenium/grid/sessionmap",
+        "//java/src/org/openqa/selenium/grid/sessionmap/local",
+        "//java/src/org/openqa/selenium/grid/sessionqueue",
+        "//java/src/org/openqa/selenium/grid/sessionqueue/local",
+        "//java/src/org/openqa/selenium/remote",
+        artifact("org.junit.jupiter:junit-jupiter-api"),
+        artifact("org.junit.jupiter:junit-jupiter-engine"),
+        artifact("org.junit.platform:junit-platform-launcher"),
+        artifact("org.junit.platform:junit-platform-reporting"),
+        artifact("org.assertj:assertj-core"),
+        artifact("org.mockito:mockito-core"),
+    ],
+)
+
+java_test_suite(
+    name = "integration",
+    size = "medium",
+    srcs = ["RedisIntegrationTest.java"],
+    tags = [
+        "integration",
+        "manual",
+        "redis",
+    ],
+    deps = [
+        "//java/src/org/openqa/selenium:core",
+        "//java/src/org/openqa/selenium/events",
+        "//java/src/org/openqa/selenium/events/local",
+        "//java/src/org/openqa/selenium/grid/data",
+        "//java/src/org/openqa/selenium/grid/distributor/redis",
+        artifact("org.junit.jupiter:junit-jupiter-api"),
+        artifact("org.junit.jupiter:junit-jupiter-engine"),
+        artifact("org.junit.platform:junit-platform-launcher"),
+        artifact("org.junit.platform:junit-platform-reporting"),
+        artifact("org.assertj:assertj-core"),
+    ],
+)

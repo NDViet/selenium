@@ -144,4 +144,42 @@ public class DistributorOptions {
         .getBool(DISTRIBUTOR_SECTION, "reject-unsupported-caps")
         .orElse(DEFAULT_REJECT_UNSUPPORTED_CAPS);
   }
+
+  public URI getRedisUri() {
+    String scheme = config.get(DISTRIBUTOR_SECTION, "redis-scheme").orElse("redis");
+
+    Optional<URI> host =
+        config
+            .get(DISTRIBUTOR_SECTION, "redis-host")
+            .map(
+                str -> {
+                  try {
+                    URI redisUri = new URI(str);
+                    if (redisUri.getHost() == null || redisUri.getPort() == -1) {
+                      throw new ConfigException(
+                          "Undefined host or port in Redis server URI: " + str);
+                    }
+                    return redisUri;
+                  } catch (URISyntaxException e) {
+                    throw new ConfigException("Redis URI is not a valid URI: " + str);
+                  }
+                });
+
+    if (host.isPresent()) {
+      return host.get();
+    }
+
+    Optional<Integer> port =
+        config.getInt(DISTRIBUTOR_SECTION, "redis-port").or(() -> Optional.of(6379));
+    Optional<String> hostname =
+        config.get(DISTRIBUTOR_SECTION, "redis-hostname").or(() -> Optional.of("localhost"));
+
+    try {
+      return new URI(scheme, null, hostname.get(), port.get(), "", null, null);
+    } catch (URISyntaxException e) {
+      throw new ConfigException(
+          "Redis server uri configured through host (%s) and port (%d) is not a valid URI",
+          hostname.get(), port.get());
+    }
+  }
 }

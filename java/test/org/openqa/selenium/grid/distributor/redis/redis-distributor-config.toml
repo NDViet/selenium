@@ -1,0 +1,21 @@
+[distributor]
+implementation = "org.openqa.selenium.grid.distributor.redis.RedisBackedDistributor"
+host = "0.0.0.0"
+port = 5553
+redis-hostname = "localhost"
+redis-port = 6379
+redis-scheme = "redis"
+healthcheck-interval = 120
+purge-nodes-interval = 30
+
+[sessionmap]
+implementation = "org.openqa.selenium.grid.sessionmap.local.LocalSessionMap"
+
+[sessions]
+implementation = "org.openqa.selenium.grid.sessionqueue.local.LocalNewSessionQueue"
+
+[events]
+implementation = "org.openqa.selenium.events.local.LocalEventBus"
+
+[server]
+port = 5553
