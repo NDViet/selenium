@@ -1,0 +1,75 @@
+# Sample Gateway Routing Rules Configuration
+# This file demonstrates how to configure routing rules for the Selenium Grid Gateway
+
+routingRules:
+  # Rule 1: Route Chrome requests to specific Grid instances with weighted distribution
+  - name: "chrome-routing"
+    description: "Route Chrome browser requests with weighted distribution"
+    matchCriteria:
+      browserName: "chrome"
+    distribute:
+      - instanceIndex: 0
+        weight: 60
+      - instanceIndex: 1
+        weight: 40
+
+  # Rule 2: Route Firefox requests to different instances
+  - name: "firefox-routing"
+    description: "Route Firefox browser requests"
+    matchCriteria:
+      browserName: "firefox"
+    distribute:
+      - instanceIndex: 1
+        weight: 70
+      - instanceIndex: 2
+        weight: 30
+
+  # Rule 3: Route Windows platform requests
+  - name: "windows-platform-routing"
+    description: "Route Windows platform requests to specific instances"
+    matchCriteria:
+      platformName: "WINDOWS"
+    distribute:
+      - instanceIndex: 0
+        weight: 50
+      - instanceIndex: 2
+        weight: 50
+
+  # Rule 4: Route specific browser version requests
+  - name: "chrome-version-routing"
+    description: "Route specific Chrome version requests"
+    matchCriteria:
+      browserName: "chrome"
+      browserVersion: "120.0"
+    distribute:
+      - instanceIndex: 0
+        weight: 100
+
+  # Rule 5: Complex matching with multiple criteria
+  - name: "complex-routing"
+    description: "Route requests with multiple matching criteria"
+    matchCriteria:
+      browserName: "edge"
+      platformName: "WINDOWS"
+    distribute:
+      - instanceIndex: 1
+        weight: 80
+      - instanceIndex: 2
+        weight: 20
+
+  # Rule 6: Safari routing (typically macOS only)
+  - name: "safari-routing"
+    description: "Route Safari requests to macOS instances"
+    matchCriteria:
+      browserName: "safari"
+      platformName: "MAC"
+    distribute:
+      - instanceIndex: 2
+        weight: 100
+
+# Configuration notes:
+# - instanceIndex refers to the index of Grid instances in the registry (0-based)
+# - weights determine the probability of selection (higher weight = higher probability)
+# - matchCriteria supports browserName, browserVersion, and platformName
+# - Rules are evaluated in order, first match wins
+# - If no rules match, the Gateway falls back to the configured load balancing strategy

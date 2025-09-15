@@ -51,4 +51,16 @@ public class RouterOptions {
   public boolean disableUi() {
     return config.get(ROUTER_SECTION, "disable-ui").map(Boolean::parseBoolean).orElse(false);
   }
+
+  public String getApiGateway() {
+    return config.get(ROUTER_SECTION, "api-gateway").orElse(null);
+  }
+
+  public String getApiGatewayUsername() {
+    return config.get(ROUTER_SECTION, "api-gateway-username").orElse(null);
+  }
+
+  public String getApiGatewayPassword() {
+    return config.get(ROUTER_SECTION, "api-gateway-password").orElse(null);
+  }
 }

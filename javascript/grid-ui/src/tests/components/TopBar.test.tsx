@@ -27,8 +27,8 @@ it('renders basic information', () => {
   const handleClick = jest.fn()
   render(<TopBar subheader={subheaderText} drawerOpen
                  toggleDrawer={handleClick}/>)
-  expect(screen.getByText('Selenium Grid')).toBeInTheDocument()
-  expect(screen.getByRole('img')).toHaveAttribute('alt', 'Selenium Grid Logo')
+  expect(screen.getByText('TrueGrid')).toBeInTheDocument()
+  expect(screen.getByRole('img')).toHaveAttribute('alt', 'TrueGrid Logo')
   expect(screen.getByText(subheaderText)).toBeInTheDocument()
 })
 

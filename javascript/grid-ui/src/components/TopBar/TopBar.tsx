@@ -77,7 +77,7 @@ function TopBar (props): JSX.Element {
             <Box
               component="img"
               src={seleniumGridLogo}
-              alt="Selenium Grid Logo"
+              alt="TrueGrid Logo"
               sx={{
                 width: 52,
                 height: 52,
@@ -94,7 +94,7 @@ function TopBar (props): JSX.Element {
                 variant="h4"
                 noWrap
               >
-                Selenium Grid
+                TrueGrid
               </Typography>
               <Typography variant="body2">
                 {subheader}

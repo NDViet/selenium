@@ -34,10 +34,17 @@ import com.google.common.collect.ImmutableSet;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -72,6 +79,8 @@ import org.openqa.selenium.remote.http.ClientConfig;
 import org.openqa.selenium.remote.http.Contents;
 import org.openqa.selenium.remote.http.HttpClient;
 import org.openqa.selenium.remote.http.HttpHandler;
+import org.openqa.selenium.remote.http.HttpMethod;
+import org.openqa.selenium.remote.http.HttpRequest;
 import org.openqa.selenium.remote.http.HttpResponse;
 import org.openqa.selenium.remote.http.Routable;
 import org.openqa.selenium.remote.http.Route;
@@ -81,6 +90,18 @@ import org.openqa.selenium.remote.tracing.Tracer;
 public class RouterServer extends TemplateGridServerCommand {
 
   private static final Logger LOG = Logger.getLogger(RouterServer.class.getName());
+  private String instanceId;
+  private String gatewayUrl;
+  private HttpClient.Factory clientFactory;
+
+  // Gateway registration retry mechanism
+  private final AtomicBoolean registrationSuccessful = new AtomicBoolean(false);
+  private final AtomicInteger registrationAttempts = new AtomicInteger(0);
+  private ScheduledExecutorService registrationRetryExecutor;
+  private static final int MAX_REGISTRATION_ATTEMPTS = 20;
+  private static final long INITIAL_RETRY_DELAY_SECONDS = 5;
+  private static final long MAX_RETRY_DELAY_SECONDS = 60;
+  private static final Duration REGISTRATION_TIMEOUT = Duration.ofSeconds(30);
 
   @Override
   public String getName() {
@@ -119,7 +140,7 @@ public class RouterServer extends TemplateGridServerCommand {
     Tracer tracer = loggingOptions.getTracer();
 
     NetworkOptions networkOptions = new NetworkOptions(config);
-    HttpClient.Factory clientFactory = networkOptions.getHttpClientFactory(tracer);
+    this.clientFactory = networkOptions.getHttpClientFactory(tracer);
 
     BaseServerOptions serverOptions = new BaseServerOptions(config);
     SecretOptions secretOptions = new SecretOptions(config);
@@ -146,6 +167,15 @@ public class RouterServer extends TemplateGridServerCommand {
 
     RouterOptions routerOptions = new RouterOptions(config);
     String subPath = routerOptions.subPath();
+    this.gatewayUrl = routerOptions.getApiGateway();
+    if (gatewayUrl != null) {
+      String username = routerOptions.getApiGatewayUsername();
+      String password = routerOptions.getApiGatewayPassword();
+      if (username != null && password != null) {
+        this.gatewayUrl = buildAuthUrl(gatewayUrl, username, password);
+      }
+    }
+    this.instanceId = UUID.randomUUID().toString();
 
     Router router = new Router(tracer, clientFactory, sessions, queue, distributor);
     Routable routerWithSpecChecks = router.with(networkOptions.getSpecComplianceChecks());
@@ -185,7 +215,8 @@ public class RouterServer extends TemplateGridServerCommand {
     // access to it.
     Routable routeWithLiveness = Route.combine(route, get("/readyz").to(() -> readinessCheck));
 
-    return new Handlers(routeWithLiveness, new ProxyWebsocketsIntoGrid(clientFactory, sessions)) {
+    return new Handlers(
+        routeWithLiveness, new ProxyWebsocketsIntoGrid(this.clientFactory, sessions)) {
       @Override
       public void close() {
         router.close();
@@ -218,10 +249,201 @@ public class RouterServer extends TemplateGridServerCommand {
     Server<?> server = asServer(config).start();
 
     LOG.info(String.format("Started Selenium Router %s: %s", getServerVersion(), server.getUrl()));
+
+    // Register with gateway if configured
+    if (gatewayUrl != null) {
+      // Initialize retry executor
+      registrationRetryExecutor =
+          Executors.newSingleThreadScheduledExecutor(
+              r -> {
+                Thread t = new Thread(r, "gateway-registration-retry");
+                t.setDaemon(true);
+                return t;
+              });
+
+      // Start registration with retry mechanism
+      startGatewayRegistrationWithRetry(server.getUrl());
+
+      // Add shutdown hook to unregister and cleanup
+      Runtime.getRuntime()
+          .addShutdownHook(
+              new Thread(
+                  () -> {
+                    shutdownRegistrationRetry();
+                    unregisterFromGateway();
+                  }));
+    }
   }
 
   private String getServerVersion() {
     BuildInfo info = new BuildInfo();
     return String.format("%s (revision %s)", info.getReleaseLabel(), info.getBuildRevision());
+  }
+
+  /**
+   * Starts the Gateway registration process with retry mechanism. Attempts registration
+   * immediately, then retries with exponential backoff if needed.
+   */
+  private void startGatewayRegistrationWithRetry(URL routerUrl) {
+    LOG.info(
+        String.format(
+            "Starting Gateway registration for router %s with retry mechanism (max attempts: %d)",
+            instanceId, MAX_REGISTRATION_ATTEMPTS));
+
+    // Attempt immediate registration
+    attemptGatewayRegistration(routerUrl);
+  }
+
+  /** Attempts to register with Gateway with comprehensive error handling and retry logic. */
+  private void attemptGatewayRegistration(URL routerUrl) {
+    if (registrationSuccessful.get()) {
+      LOG.fine("Router already successfully registered with Gateway");
+      return;
+    }
+
+    int currentAttempt = registrationAttempts.incrementAndGet();
+
+    if (currentAttempt > MAX_REGISTRATION_ATTEMPTS) {
+      LOG.severe(
+          String.format(
+              "Failed to register router %s with gateway %s after %d attempts. Giving up.",
+              instanceId, gatewayUrl, MAX_REGISTRATION_ATTEMPTS));
+      return;
+    }
+
+    LOG.info(
+        String.format(
+            "Attempting Gateway registration (attempt %d/%d) for router %s",
+            currentAttempt, MAX_REGISTRATION_ATTEMPTS, instanceId));
+
+    try {
+      String requestBody =
+          String.format("{\"id\":\"%s\",\"url\":\"%s\"}", instanceId, routerUrl.toString());
+
+      ClientConfig config =
+          ClientConfig.defaultConfig()
+              .baseUri(URI.create(gatewayUrl))
+              .connectionTimeout(REGISTRATION_TIMEOUT)
+              .readTimeout(REGISTRATION_TIMEOUT);
+
+      try (HttpClient client = clientFactory.createClient(config)) {
+        HttpRequest request = new HttpRequest(HttpMethod.POST, "/discovery");
+        request.setContent(Contents.utf8String(requestBody));
+        request.setHeader("Content-Type", "application/json");
+
+        HttpResponse response = client.execute(request);
+
+        if (response.getStatus() == 200) {
+          registrationSuccessful.set(true);
+          LOG.info(
+              String.format(
+                  "Successfully registered router %s with gateway %s (attempt %d/%d)",
+                  instanceId, gatewayUrl, currentAttempt, MAX_REGISTRATION_ATTEMPTS));
+          return;
+        } else {
+          String errorMsg =
+              String.format(
+                  "Failed to register with gateway. Status: %d, attempt %d/%d",
+                  response.getStatus(), currentAttempt, MAX_REGISTRATION_ATTEMPTS);
+          LOG.warning(errorMsg);
+
+          if (currentAttempt < MAX_REGISTRATION_ATTEMPTS) {
+            scheduleRetryAttempt(routerUrl, currentAttempt);
+          }
+        }
+      }
+    } catch (Exception e) {
+      String errorMsg =
+          String.format(
+              "Failed to register with gateway (attempt %d/%d): %s",
+              currentAttempt, MAX_REGISTRATION_ATTEMPTS, e.getMessage());
+      LOG.log(Level.WARNING, errorMsg, e);
+
+      if (currentAttempt < MAX_REGISTRATION_ATTEMPTS) {
+        scheduleRetryAttempt(routerUrl, currentAttempt);
+      }
+    }
+  }
+
+  /** Schedules the next retry attempt with exponential backoff. */
+  private void scheduleRetryAttempt(URL routerUrl, int currentAttempt) {
+    if (registrationRetryExecutor == null || registrationRetryExecutor.isShutdown()) {
+      LOG.warning("Registration retry executor is not available for scheduling retry");
+      return;
+    }
+
+    // Calculate exponential backoff delay: min(INITIAL_DELAY * 2^(attempt-1), MAX_DELAY)
+    long delaySeconds =
+        Math.min(
+            INITIAL_RETRY_DELAY_SECONDS * (1L << (currentAttempt - 1)), MAX_RETRY_DELAY_SECONDS);
+
+    LOG.info(
+        String.format(
+            "Scheduling Gateway registration retry in %d seconds (attempt %d/%d)",
+            delaySeconds, currentAttempt + 1, MAX_REGISTRATION_ATTEMPTS));
+
+    registrationRetryExecutor.schedule(
+        () -> attemptGatewayRegistration(routerUrl), delaySeconds, TimeUnit.SECONDS);
+  }
+
+  /** Shuts down the registration retry mechanism gracefully. */
+  private void shutdownRegistrationRetry() {
+    if (registrationRetryExecutor != null && !registrationRetryExecutor.isShutdown()) {
+      LOG.info("Shutting down Gateway registration retry mechanism");
+      registrationRetryExecutor.shutdown();
+      try {
+        if (!registrationRetryExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+          registrationRetryExecutor.shutdownNow();
+        }
+      } catch (InterruptedException e) {
+        registrationRetryExecutor.shutdownNow();
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private void unregisterFromGateway() {
+    if (gatewayUrl == null || instanceId == null) {
+      return;
+    }
+
+    try {
+      ClientConfig config = ClientConfig.defaultConfig().baseUri(URI.create(gatewayUrl));
+      try (HttpClient client = clientFactory.createClient(config)) {
+        HttpRequest request =
+            new HttpRequest(
+                HttpMethod.DELETE,
+                "/discovery?url=" + java.net.URLEncoder.encode(gatewayUrl, "UTF-8"));
+
+        HttpResponse response = client.execute(request);
+        if (response.getStatus() == 200) {
+          LOG.info(String.format("Successfully unregistered router %s from gateway", instanceId));
+        } else {
+          LOG.warning(
+              String.format("Failed to unregister from gateway. Status: %d", response.getStatus()));
+        }
+      }
+    } catch (Exception e) {
+      LOG.log(Level.WARNING, "Failed to unregister from gateway: " + e.getMessage(), e);
+    }
+  }
+
+  private String buildAuthUrl(String baseUrl, String username, String password) {
+    try {
+      URI uri = URI.create(baseUrl);
+      String userInfo = username + ":" + password;
+      return new URI(
+              uri.getScheme(),
+              userInfo,
+              uri.getHost(),
+              uri.getPort(),
+              uri.getPath(),
+              uri.getQuery(),
+              uri.getFragment())
+          .toString();
+    } catch (Exception e) {
+      LOG.warning("Failed to build authenticated URL: " + e.getMessage());
+      return baseUrl;
+    }
   }
 }

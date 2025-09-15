@@ -174,7 +174,7 @@ function Overview (): JSX.Element {
   }
 
   if (sortedNodes.length === 0) {
-    const shortMessage = 'The Grid has no registered Nodes yet.'
+    const shortMessage = 'The TrueGrid Gateway has no registered Grids yet.'
     return (
       <Grid container spacing={3}>
         <NoData message={shortMessage}/>

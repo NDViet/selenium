@@ -132,11 +132,29 @@ class WebSocketUpgradeHandler extends ChannelInboundHandlerAdapter {
       return;
     }
 
+    // CRITICAL DEBUG: Log WebSocket handler factory invocation
+    System.out.println(
+        "🔧🔧🔧 WebSocketUpgradeHandler: About to call factory.apply() for URI: " + req.uri());
+    System.err.println(
+        "🔧🔧🔧 WebSocketUpgradeHandler: About to call factory.apply() for URI: " + req.uri());
+
     // Is this something we should try and handle?
     Optional<Consumer<Message>> maybeHandler =
         factory.apply(
             req.uri(), msg -> ctx.channel().writeAndFlush(Require.nonNull("Message to send", msg)));
+
+    System.out.println(
+        "🔧🔧🔧 WebSocketUpgradeHandler: factory.apply() returned: "
+            + (maybeHandler.isPresent() ? "HANDLER" : "EMPTY"));
+    System.err.println(
+        "🔧🔧🔧 WebSocketUpgradeHandler: factory.apply() returned: "
+            + (maybeHandler.isPresent() ? "HANDLER" : "EMPTY"));
+
     if (!maybeHandler.isPresent()) {
+      System.out.println(
+          "🚨🚨🚨 WebSocketUpgradeHandler: Sending HTTP 400 - factory returned Optional.empty()");
+      System.err.println(
+          "🚨🚨🚨 WebSocketUpgradeHandler: Sending HTTP 400 - factory returned Optional.empty()");
       sendHttpResponse(
           ctx, req, new DefaultFullHttpResponse(HTTP_1_1, BAD_REQUEST, ctx.alloc().buffer(0)));
       return;

@@ -25,6 +25,7 @@ import ListItemText from '@mui/material/ListItemText'
 import { ChevronLeft as ChevronLeftIcon } from '@mui/icons-material'
 import { Dashboard as DashboardIcon } from '@mui/icons-material'
 import { Assessment as AssessmentIcon } from '@mui/icons-material'
+import { Settings as SettingsIcon } from '@mui/icons-material'
 import { Help as HelpIcon } from '@mui/icons-material'
 import React from 'react'
 import { Box, Typography } from '@mui/material'
@@ -153,6 +154,12 @@ function NavBar (props) {
               <AssessmentIcon />
             </ListItemIcon>
             <ListItemText primary='Sessions' />
+          </ListItemLink>
+          <ListItemLink href='#/configuration'>
+            <ListItemIcon>
+              <SettingsIcon />
+            </ListItemIcon>
+            <ListItemText primary='Configuration' />
           </ListItemLink>
           <ListItemLink href='#/help'>
             <ListItemIcon>

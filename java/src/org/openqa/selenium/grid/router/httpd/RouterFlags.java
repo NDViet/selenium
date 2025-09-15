@@ -74,6 +74,24 @@ public class RouterFlags implements HasRoles {
   @ConfigValue(section = ROUTER_SECTION, name = "disable-ui", example = "true")
   public boolean disableUi = false;
 
+  @Parameter(
+      names = {"--api-gateway"},
+      description = "Grid gateway URL for router registration")
+  @ConfigValue(section = ROUTER_SECTION, name = "api-gateway", example = "http://gateway:4444")
+  private String apiGateway;
+
+  @Parameter(
+      names = {"--api-gateway-username"},
+      description = "Username for gateway basic authentication")
+  @ConfigValue(section = ROUTER_SECTION, name = "api-gateway-username", example = "admin")
+  private String apiGatewayUsername;
+
+  @Parameter(
+      names = {"--api-gateway-password"},
+      description = "Password for gateway basic authentication")
+  @ConfigValue(section = ROUTER_SECTION, name = "api-gateway-password", example = "password")
+  private String apiGatewayPassword;
+
   @Override
   public Set<Role> getRoles() {
     return Collections.singleton(ROUTER_ROLE);

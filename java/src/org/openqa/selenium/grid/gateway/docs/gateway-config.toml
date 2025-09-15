@@ -1,0 +1,64 @@
+# Selenium Grid Gateway Configuration
+# Complete configuration file with all available options
+
+# Server configuration
+[server]
+port = 4444
+max-threads = 100
+
+# Logging configuration
+[logging]
+enable-structured-logs = true
+log-level = "INFO"
+log-encoding = "UTF-8"
+tracing = true
+
+# Network configuration
+[network]
+relax-checks = true
+
+# Gateway-specific configuration options
+[gateway]
+routing-rules-file = ""
+enable-routing-rules = true
+enable-discovery-endpoints = true
+enable-individual-status = true
+routing-rules-validation = true
+fallback-to-load-balancer = true
+routing-rules-cache-ttl = 300
+discovery-registration-timeout = 30
+gateway-metrics-enabled = true
+grid-instances = []
+sub-path = "/"
+username = "admin"
+password = "admin"
+disable-ui = false
+
+# Load balancer configuration options (consolidated into gateway)
+load-balancing-strategy = "GREEDY"
+max-retry-attempts = 3
+force-fallback-on-final-retry = true
+request-timeout = 60
+health-check-interval = 30
+health-check-timeout = 10
+connection-timeout = 30
+max-failure-count = 3
+session-cleanup-interval = 300
+enable-metrics = true
+discovery-enabled = false
+discovery-interval = 15
+service-registry-type = "HTTP"
+service-registry-timeout = 120
+
+[session]
+# Session management
+session-timeout = 300
+override-max-sessions = false
+enable-managed-downloads = true
+
+[monitoring]
+# Monitoring and metrics
+enable-metrics = true
+metrics-port = 9090
+enable-health-checks = true
+health-check-path = "/health"

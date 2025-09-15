@@ -32,6 +32,7 @@ import Footer from './components/Footer/Footer'
 import Container from '@mui/material/Container'
 import Sessions from './screens/Sessions/Sessions'
 import Help from './screens/Help/Help'
+import Configuration from './screens/Configuration/Configuration'
 import NavBar from './components/NavBar/NavBar'
 import { Box } from '@mui/material'
 import {GRID_QUERY} from './graphql/grid'
@@ -105,6 +106,7 @@ function App () {
             <Routes>
               <Route path='/sessions' element={<Sessions />} />
               <Route path='/session/:sessionId' element={<Sessions />} />
+              <Route path='/configuration' element={<Configuration />} />
               <Route path='/help' element={<Help />} />
               <Route path='/' element={<Overview />} />
               <Route path='*' element={<Help />} />

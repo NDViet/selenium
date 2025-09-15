@@ -1,0 +1,50 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//java:defs.bzl", "JUNIT5_DEPS", "java_test_suite")
+
+java_test_suite(
+    name = "small-tests",
+    size = "small",
+    srcs = [
+        "CapabilityAwareLoadBalancerTest.java",
+        "GreedyLoadBalancerTest.java",
+        "RetryAwareLoadBalancerTest.java",
+        "RoutingCacheTest.java",
+        "RoutingRuleTest.java",
+    ],
+    deps = [
+        "//java/src/org/openqa/selenium:core",
+        "//java/src/org/openqa/selenium/grid/gateway",
+        "//java/src/org/openqa/selenium/json:json-module",
+        "//java/src/org/openqa/selenium/remote:remote-module",
+        "//java/src/org/openqa/selenium/remote/http:http-module",
+        "//java/test/org/openqa/selenium/grid/testing",
+        artifact("org.junit.jupiter:junit-jupiter-api"),
+        artifact("org.assertj:assertj-core"),
+    ] + JUNIT5_DEPS,
+)
+
+java_test_suite(
+    name = "discovery-tests",
+    size = "small",
+    srcs = [
+        "DiscoveryEndpointTest.java",
+    ],
+    deps = [
+        artifact("org.junit.jupiter:junit-jupiter-api"),
+        artifact("org.assertj:assertj-core"),
+    ] + JUNIT5_DEPS,
+)
+
+java_test_suite(
+    name = "routing-rules-tests",
+    size = "small",
+    srcs = [
+        "RoutingRulesGetTest.java",
+        "YamlParsingTest.java",
+    ],
+    deps = [
+        "//java/src/org/openqa/selenium/grid/gateway",
+        artifact("org.junit.jupiter:junit-jupiter-api"),
+        artifact("org.assertj:assertj-core"),
+    ] + JUNIT5_DEPS,
+)

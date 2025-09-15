@@ -17,10 +17,23 @@
 
 package org.openqa.selenium.grid.commands;
 
-import org.openqa.selenium.grid.config.ConfigValue;
+import static org.openqa.selenium.grid.config.StandardGridRoles.HTTPD_ROLE;
 
-public class StandaloneFlags {
+import com.google.auto.service.AutoService;
+import java.util.Collections;
+import java.util.Set;
+import org.openqa.selenium.grid.config.ConfigValue;
+import org.openqa.selenium.grid.config.HasRoles;
+import org.openqa.selenium.grid.config.Role;
+
+@AutoService(HasRoles.class)
+public class StandaloneFlags implements HasRoles {
 
   @ConfigValue(section = "server", name = "port", example = "4444")
   public int port = 4444;
+
+  @Override
+  public Set<Role> getRoles() {
+    return Collections.singleton(HTTPD_ROLE);
+  }
 }

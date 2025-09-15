@@ -1,0 +1,63 @@
+# Selenium Grid Gateway Configuration
+# Complete configuration file with all available options
+
+[server]
+# Server configuration
+port = 4444
+max-threads = 24
+
+[logging]
+# Logging configuration
+enable-structured-logs = true
+log-level = "INFO"
+log-encoding = "UTF-8"
+tracing = true
+
+[network]
+# Network configuration
+relax-checks = true
+
+[gateway]
+# Gateway-specific configuration options
+routing-rules-file = "/path/to/routing-rules.yaml"
+enable-routing-rules = true
+enable-discovery-endpoints = true
+enable-individual-status = true
+routing-rules-validation = true
+fallback-to-load-balancer = true
+routing-rules-cache-ttl = 300
+discovery-registration-timeout = 30
+gateway-metrics-enabled = true
+grid-instances = "http://grid1:4444,http://grid2:4444,http://grid3:4444"
+
+[loadbalancer]
+# Load balancer configuration options
+grid-instances = "http://grid1:4444,http://grid2:4444"
+load-balancing-strategy = "GREEDY"
+max-retry-attempts = 3
+force-fallback-on-final-retry = true
+request-timeout = 60
+health-check-interval = 30
+health-check-timeout = 10
+connection-timeout = 30
+max-failure-count = 3
+session-cleanup-interval = 300
+enable-metrics = true
+disable-ui = false
+discovery-enabled = false
+discovery-interval = 15
+service-registry-type = "HTTP"
+service-registry-timeout = 120
+
+[session]
+# Session management
+session-timeout = 300
+override-max-sessions = false
+enable-managed-downloads = true
+
+[monitoring]
+# Monitoring and metrics
+enable-metrics = true
+metrics-port = 9090
+enable-health-checks = true
+health-check-path = "/health"

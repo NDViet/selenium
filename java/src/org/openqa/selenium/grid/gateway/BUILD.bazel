@@ -1,0 +1,32 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//java:defs.bzl", "java_library")
+
+java_library(
+    name = "gateway",
+    srcs = glob(["*.java"]),
+    visibility = [
+        "//java/src/org/openqa/selenium/grid:__subpackages__",
+        "//java/test/org/openqa/selenium/grid:__subpackages__",
+    ],
+    deps = [
+        "//java/src/org/openqa/selenium:core",
+        "//java/src/org/openqa/selenium/cli",
+        "//java/src/org/openqa/selenium/concurrent",
+        "//java/src/org/openqa/selenium/grid/config",
+        "//java/src/org/openqa/selenium/grid/data",
+        "//java/src/org/openqa/selenium/grid/graphql",
+        "//java/src/org/openqa/selenium/grid/security",
+        "//java/src/org/openqa/selenium/grid/server",
+        "//java/src/org/openqa/selenium/grid/web",
+        "//java/src/org/openqa/selenium/json",
+        "//java/src/org/openqa/selenium/remote",
+        "//java/src/org/openqa/selenium/remote/http",
+        "//java/src/org/openqa/selenium/status",
+        artifact("com.beust:jcommander"),
+        artifact("com.google.guava:guava"),
+        artifact("com.google.auto.service:auto-service-annotations"),
+        artifact("com.github.ben-manes.caffeine:caffeine"),
+        artifact("com.graphql-java:graphql-java"),
+        artifact("org.yaml:snakeyaml"),
+    ],
+)

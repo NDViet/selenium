@@ -1,0 +1,33 @@
+# Sample YAML configuration for Greedy Load Balancer
+# This configuration defines capacity limits for Grid instances
+
+instances:
+  - index: 0
+    maxCapabilities: 200
+  - index: 1
+    maxCapabilities: 500
+  - index: 2
+    maxCapabilities: 300
+
+# Optional: Routing rules can also be defined in the same file
+routingRules:
+  - match:
+      platformName: ["Windows", "macOS"]
+    distribute:
+      - index: 0
+        weight: 70
+      - index: 2
+        weight: 30
+  
+  - match:
+      platformName: ["Linux"]
+    distribute:
+      - index: 1
+        weight: 100
+  
+  - match: {}   # default fallback
+    distribute:
+      - index: 1
+        weight: 60
+      - index: 2
+        weight: 40

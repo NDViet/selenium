@@ -1,0 +1,31 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//java:defs.bzl", "java_binary", "java_library")
+
+java_library(
+    name = "example",
+    srcs = glob(["*.java"]),
+    visibility = [
+        "//java/src/org/openqa/selenium/grid:__subpackages__",
+        "//java/test/org/openqa/selenium/grid:__subpackages__",
+    ],
+    deps = [
+        "//java/src/org/openqa/selenium:core",
+        "//java/src/org/openqa/selenium/grid/gateway",
+        "//java/src/org/openqa/selenium/grid/gateway/discovery",
+        "//java/src/org/openqa/selenium/grid/server",
+        "//java/src/org/openqa/selenium/netty/server",
+        "//java/src/org/openqa/selenium/remote",
+        "//java/src/org/openqa/selenium/remote/http",
+        artifact("com.google.guava:guava"),
+    ],
+)
+
+java_binary(
+    name = "launch-load-balancer",
+    srcs = ["LaunchLoadBalancer.java"],
+    main_class = "org.openqa.selenium.grid.gateway.example.LaunchLoadBalancer",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":example",
+    ],
+)

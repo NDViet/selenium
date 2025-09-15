@@ -443,8 +443,8 @@ describe('Overview component', () => {
       </MockedProvider>
     )
 
-    await screen.findByText('The Grid has no registered Nodes yet.')
+    await screen.findByText('The TrueGrid Gateway has no registered Grids yet.')
 
-    expect(screen.getByText('The Grid has no registered Nodes yet.')).toBeInTheDocument()
+    expect(screen.getByText('The TrueGrid Gateway has no registered Grids yet.')).toBeInTheDocument()
   })
 })
