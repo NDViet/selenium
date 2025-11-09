@@ -26,12 +26,18 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Type;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.grid.config.Config;
 import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.grid.log.LoggingOptions;
 import org.openqa.selenium.grid.server.NetworkOptions;
+import org.openqa.selenium.grid.sessionmap.SessionHistoryFilters;
 import org.openqa.selenium.grid.sessionmap.SessionMap;
+import org.openqa.selenium.grid.sessionmap.SessionMetadata;
 import org.openqa.selenium.grid.sessionmap.config.SessionMapOptions;
 import org.openqa.selenium.grid.web.Values;
 import org.openqa.selenium.internal.Require;
@@ -106,9 +112,41 @@ public class RemoteSessionMap extends SessionMap {
 
   @Override
   public void remove(SessionId id) {
-    Require.nonNull("Session ID", id);
+    remove(id, REASON_HTTP_REQUEST, Instant.now());
+  }
 
-    makeRequest(new HttpRequest(DELETE, "/se/grid/session/" + id), Void.class);
+  @Override
+  public void remove(SessionId id, String reason, Instant endedAt) {
+    Require.nonNull("Session ID", id);
+    Require.nonNull("End time", endedAt);
+
+    HttpRequest request = new HttpRequest(DELETE, "/se/grid/session/" + id);
+    request.addQueryParameter("reason", normaliseReason(reason));
+    request.addQueryParameter("endedAt", endedAt.toString());
+    makeRequest(request, Void.class);
+  }
+
+  @Override
+  public List<SessionMetadata> getSessionHistory(SessionHistoryFilters filters) {
+    return getSessionHistory(
+        filters.getSessionId(), filters.getCloseReason(), filters.getStartedAfter(), filters.getEndedAfter());
+  }
+
+  @Override
+  public List<SessionMetadata> getSessionHistory(
+      Optional<SessionId> sessionId,
+      Optional<String> reason,
+      Optional<Instant> startedAfter,
+      Optional<Instant> endedAfter) {
+
+    HttpRequest request = new HttpRequest(GET, "/se/grid/sessions/history");
+    sessionId.map(SessionId::toString).ifPresent(value -> request.addQueryParameter("sessionId", value));
+    reason.map(this::normaliseReason).ifPresent(value -> request.addQueryParameter("reason", value));
+    startedAfter.map(Instant::toString).ifPresent(value -> request.addQueryParameter("startedAfter", value));
+    endedAfter.map(Instant::toString).ifPresent(value -> request.addQueryParameter("endedAfter", value));
+
+    SessionMetadata[] response = makeRequest(request, SessionMetadata[].class);
+    return response == null ? List.of() : Arrays.asList(response);
   }
 
   private <T> T makeRequest(HttpRequest request, Type typeOfT) {

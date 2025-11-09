@@ -62,6 +62,7 @@ public class Router implements HasReadyState, Routable, Closeable {
     routes =
         combine(
             get("/status").to(() -> new GridStatusHandler(tracer, distributor)),
+            get("/se/grid/sessions/history").to(() -> new SessionHistoryHandler(tracer, sessions)),
             sessions.with(new SpanDecorator(tracer, req -> "session_map")),
             queue.with(new SpanDecorator(tracer, req -> "session_queue")),
             distributor.with(new SpanDecorator(tracer, req -> "distributor")),

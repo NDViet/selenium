@@ -15,75 +15,64 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package org.openqa.selenium.grid.sessionmap;
+package org.openqa.selenium.grid.router;
 
-import static org.openqa.selenium.remote.RemoteTags.SESSION_ID;
+import static org.openqa.selenium.remote.http.Contents.asJson;
 import static org.openqa.selenium.remote.tracing.HttpTracing.newSpanAsChildOf;
 import static org.openqa.selenium.remote.tracing.Tags.HTTP_REQUEST;
-import static org.openqa.selenium.remote.http.Contents.asJson;
 
 import com.google.common.collect.ImmutableMap;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
-import java.util.Optional;
+import java.util.List;
+import org.openqa.selenium.grid.sessionmap.SessionHistoryFilters;
+import org.openqa.selenium.grid.sessionmap.SessionMap;
+import org.openqa.selenium.grid.sessionmap.SessionMetadata;
 import org.openqa.selenium.internal.Require;
-import org.openqa.selenium.remote.SessionId;
 import org.openqa.selenium.remote.http.HttpHandler;
 import org.openqa.selenium.remote.http.HttpRequest;
 import org.openqa.selenium.remote.http.HttpResponse;
 import org.openqa.selenium.remote.tracing.Span;
 import org.openqa.selenium.remote.tracing.Tracer;
 
-class RemoveFromSession implements HttpHandler {
+class SessionHistoryHandler implements HttpHandler {
 
   private final Tracer tracer;
   private final SessionMap sessions;
-  private final SessionId id;
 
-  RemoveFromSession(Tracer tracer, SessionMap sessions, SessionId id) {
+  SessionHistoryHandler(Tracer tracer, SessionMap sessions) {
     this.tracer = Require.nonNull("Tracer", tracer);
     this.sessions = Require.nonNull("Session map", sessions);
-    this.id = Require.nonNull("Session id", id);
   }
 
   @Override
   public HttpResponse execute(HttpRequest req) {
-    try (Span span = newSpanAsChildOf(tracer, req, "sessions.remove_session")) {
+    try (Span span = newSpanAsChildOf(tracer, req, "router.get_session_history")) {
       HTTP_REQUEST.accept(span, req);
-      SESSION_ID.accept(span, id);
 
-      String reason =
-          Optional.ofNullable(req.getQueryParameter("reason"))
-              .filter(value -> !value.isBlank())
-              .orElse(SessionMap.REASON_HTTP_REQUEST);
-      span.setAttribute("session.close.reason", reason);
-
-      Instant endedAt = parseEndTime(req).orElseGet(Instant::now);
-      span.setAttribute("session.close.endedAt", endedAt.toString());
-
+      SessionHistoryFilters filters;
       try {
-        sessions.remove(id, reason, endedAt);
-        return new HttpResponse();
+        filters = SessionHistoryFilters.fromRequest(req);
       } catch (IllegalArgumentException e) {
         return new HttpResponse().setStatus(400).setContent(errorPayload(e.getMessage()));
       }
-    }
-  }
 
-  private Optional<Instant> parseEndTime(HttpRequest req) {
-    String endedAt = req.getQueryParameter("endedAt");
-    if ((endedAt == null || endedAt.isBlank())) {
-      endedAt = req.getQueryParameter("timestamp");
-    }
+      filters
+          .getSessionId()
+          .ifPresent(sessionId -> span.setAttribute("session.history.sessionId", sessionId.toString()));
+      filters
+          .getCloseReason()
+          .ifPresent(reason -> span.setAttribute("session.history.reason", reason));
+      filters
+          .getStartedAfter()
+          .map(Instant::toString)
+          .ifPresent(value -> span.setAttribute("session.history.startedAfter", value));
+      filters
+          .getEndedAfter()
+          .map(Instant::toString)
+          .ifPresent(value -> span.setAttribute("session.history.endedAfter", value));
 
-    if (endedAt == null || endedAt.isBlank()) {
-      return Optional.empty();
-    }
-
-    try {
-      return Optional.of(Instant.parse(endedAt));
-    } catch (DateTimeParseException e) {
-      throw new IllegalArgumentException("Unable to parse timestamp: " + endedAt, e);
+      List<SessionMetadata> history = sessions.getSessionHistory(filters);
+      return new HttpResponse().setContent(asJson(ImmutableMap.of("value", history)));
     }
   }
 
@@ -97,3 +86,4 @@ class RemoveFromSession implements HttpHandler {
             13));
   }
 }
+

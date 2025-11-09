@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,7 @@ import org.openqa.selenium.events.EventBus;
 import org.openqa.selenium.events.local.GuavaEventBus;
 import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.grid.data.SessionClosedEvent;
+import org.openqa.selenium.grid.sessionmap.SessionMetadata;
 import org.openqa.selenium.grid.sessionmap.local.LocalSessionMap;
 import org.openqa.selenium.grid.sessionmap.remote.RemoteSessionMap;
 import org.openqa.selenium.grid.testing.PassthroughHttpClient;
@@ -107,6 +110,23 @@ class SessionMapTest {
 
     assertThatExceptionOfType(NoSuchSessionException.class).isThrownBy(() -> local.get(id));
     assertThatExceptionOfType(NoSuchSessionException.class).isThrownBy(() -> remote.get(id));
+  }
+
+  @Test
+  void shouldExposeSessionHistory() {
+    local.add(expected);
+
+    remote.remove(id);
+
+    List<SessionMetadata> history =
+        local.getSessionHistory(Optional.of(id), Optional.empty(), Optional.empty(), Optional.empty());
+
+    assertThat(history).hasSize(1);
+    SessionMetadata metadata = history.get(0);
+    assertThat(metadata.getSessionId()).isEqualTo(id);
+    assertThat(metadata.getStartTime()).isEqualTo(expected.getStartTime());
+    assertThat(metadata.getCloseReason()).isEqualTo(SessionMap.REASON_HTTP_REQUEST);
+    assertThat(metadata.getEndTime()).isAfterOrEqualTo(metadata.getStartTime());
   }
 
   /** This is because multiple areas within the grid may all try and remove a session. */

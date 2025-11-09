@@ -22,7 +22,15 @@ import static org.openqa.selenium.remote.http.Route.delete;
 import static org.openqa.selenium.remote.http.Route.post;
 
 import java.net.URI;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.internal.Require;
@@ -73,12 +81,28 @@ public abstract class SessionMap implements HasReadyState, Routable {
   protected final Tracer tracer;
 
   private final Route routes;
+  private final ConcurrentMap<SessionId, Session> trackedSessions = new ConcurrentHashMap<>();
+  private final CopyOnWriteArrayList<SessionMetadata> sessionHistory = new CopyOnWriteArrayList<>();
+
+  public static final String REASON_HTTP_REQUEST = "http-request";
+  public static final String REASON_SESSION_CLOSED_EVENT = "session-closed-event";
+  public static final String REASON_NODE_REMOVED = "node-removed";
+  public static final String REASON_NODE_RESTARTED = "node-restarted";
+  public static final String REASON_UNKNOWN = "unknown";
 
   public abstract boolean add(Session session);
 
   public abstract Session get(SessionId id) throws NoSuchSessionException;
 
-  public abstract void remove(SessionId id);
+  public void remove(SessionId id) {
+    remove(id, REASON_UNKNOWN, Instant.now());
+  }
+
+  public void remove(SessionId id, String reason) {
+    remove(id, reason, Instant.now());
+  }
+
+  public abstract void remove(SessionId id, String reason, Instant endedAt);
 
   public URI getUri(SessionId id) throws NoSuchSessionException {
     return get(id).getUri();
@@ -95,6 +119,8 @@ public abstract class SessionMap implements HasReadyState, Routable {
             post("/se/grid/session").to(() -> new AddToSessionMap(tracer, json, this)),
             Route.get("/se/grid/session/{sessionId}")
                 .to(params -> new GetFromSessionMap(tracer, this, sessionIdFrom(params))),
+            Route.get("/se/grid/sessions/history")
+                .to(() -> new GetSessionHistory(tracer, this)),
             delete("/se/grid/session/{sessionId}")
                 .to(params -> new RemoveFromSession(tracer, this, sessionIdFrom(params))));
   }
@@ -111,5 +137,61 @@ public abstract class SessionMap implements HasReadyState, Routable {
   @Override
   public HttpResponse execute(HttpRequest req) {
     return routes.execute(req);
+  }
+
+  protected void trackSession(Session session) {
+    trackedSessions.put(session.getId(), session);
+  }
+
+  protected void recordSessionClosed(SessionId id, Session removedSession, Instant endedAt, String reason) {
+    String normalisedReason = normaliseReason(reason);
+    Session session = removedSession != null ? removedSession : trackedSessions.remove(id);
+    if (session != null) {
+      sessionHistory.add(new SessionMetadata(session, endedAt, normalisedReason));
+    } else {
+      sessionHistory.add(new SessionMetadata(id, endedAt, normalisedReason));
+    }
+    trackedSessions.remove(id);
+  }
+
+  public List<SessionMetadata> getSessionHistory(SessionHistoryFilters filters) {
+    Require.nonNull("Session history filters", filters);
+    return getSessionHistory(
+        filters.getSessionId(), filters.getCloseReason(), filters.getStartedAfter(), filters.getEndedAfter());
+  }
+
+  public List<SessionMetadata> getSessionHistory(
+      Optional<SessionId> sessionId,
+      Optional<String> reason,
+      Optional<Instant> startedAfter,
+      Optional<Instant> endedAfter) {
+
+    return sessionHistory.stream()
+        .filter(
+            metadata ->
+                sessionId.map(id -> id.equals(metadata.getSessionId())).orElse(true))
+        .filter(
+            metadata ->
+                reason
+                    .map(value -> metadata.getCloseReason().equalsIgnoreCase(value))
+                    .orElse(true))
+        .filter(
+            metadata ->
+                startedAfter
+                    .map(start -> metadata.getStartTime() != null && !metadata.getStartTime().isBefore(start))
+                    .orElse(true))
+        .filter(
+            metadata ->
+                endedAfter
+                    .map(end -> !metadata.getEndTime().isBefore(end))
+                    .orElse(true))
+        .collect(Collectors.toUnmodifiableList());
+  }
+
+  protected String normaliseReason(String reason) {
+    return Optional.ofNullable(reason)
+        .map(value -> value.trim().toLowerCase(Locale.ROOT))
+        .filter(value -> !value.isEmpty())
+        .orElse(REASON_UNKNOWN);
   }
 }

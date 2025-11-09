@@ -76,7 +76,8 @@ public class RedisBackedSessionMap extends SessionMap {
     this.bus = Require.nonNull("Event bus", bus);
     this.connection = new GridRedisClient(serverUri);
     this.serverUri = serverUri;
-    this.bus.addListener(SessionClosedEvent.listener(this::remove));
+    this.bus.addListener(
+        SessionClosedEvent.listener(id -> this.remove(id, REASON_SESSION_CLOSED_EVENT, Instant.now())));
 
     this.bus.addListener(
         NodeRemovedEvent.listener(
@@ -84,11 +85,14 @@ public class RedisBackedSessionMap extends SessionMap {
                 nodeStatus.getSlots().stream()
                     .filter(slot -> slot.getSession() != null)
                     .map(slot -> slot.getSession().getId())
-                    .forEach(this::remove)));
+                    .forEach(
+                        sessionId ->
+                            this.remove(sessionId, REASON_NODE_REMOVED, Instant.now()))));
 
     bus.addListener(
         NodeRestartedEvent.listener(
-            previousNodeStatus -> this.removeByUri(previousNodeStatus.getExternalUri())));
+            previousNodeStatus ->
+                this.removeByUri(previousNodeStatus.getExternalUri(), REASON_NODE_RESTARTED)));
   }
 
   public static SessionMap create(Config config) {
@@ -144,6 +148,8 @@ public class RedisBackedSessionMap extends SessionMap {
               stereotypeKey, stereotypeJson,
               capabilitiesKey, capabilitiesJson,
               startKey, startValue));
+
+      trackSession(session);
 
       return true;
     }
@@ -258,7 +264,7 @@ public class RedisBackedSessionMap extends SessionMap {
   }
 
   @Override
-  public void remove(SessionId id) {
+  public void remove(SessionId id, String reason, Instant endedAt) {
     Require.nonNull("Session ID", id);
 
     try (Span span = tracer.getCurrentContext().createSpan("DEL sessionUriKey capabilitiesKey")) {
@@ -284,10 +290,11 @@ public class RedisBackedSessionMap extends SessionMap {
       span.addEvent("Deleted session from the database", attributeMap);
 
       connection.del(uriKey, capabilitiesKey, stereotypeKey, startKey);
+      recordSessionClosed(id, null, endedAt, reason);
     }
   }
 
-  public void removeByUri(URI uri) {
+  public void removeByUri(URI uri, String reason) {
     List<String> uriKeys = connection.getKeysByPattern("session:*:uri");
 
     if (uriKeys.isEmpty()) {
@@ -306,7 +313,7 @@ public class RedisBackedSessionMap extends SessionMap {
               String[] sessionKey = key.split(":");
               return new SessionId(sessionKey[1]);
             })
-        .forEach(this::remove);
+        .forEach(sessionId -> this.remove(sessionId, reason, Instant.now()));
   }
 
   @Override
