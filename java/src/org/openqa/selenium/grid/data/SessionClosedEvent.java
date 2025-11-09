@@ -17,6 +17,7 @@
 
 package org.openqa.selenium.grid.data;
 
+import java.util.Objects;
 import java.util.function.Consumer;
 import org.openqa.selenium.events.Event;
 import org.openqa.selenium.events.EventListener;
@@ -26,15 +27,39 @@ import org.openqa.selenium.remote.SessionId;
 
 public class SessionClosedEvent extends Event {
 
+  public static final String DEFAULT_REASON = "session-closed-event";
+
   private static final EventName SESSION_CLOSED = new EventName("session-closed");
 
   public SessionClosedEvent(SessionId id) {
-    super(SESSION_CLOSED, id);
+    this(id, DEFAULT_REASON);
   }
 
-  public static EventListener<SessionId> listener(Consumer<SessionId> handler) {
+  public SessionClosedEvent(SessionId id, String reason) {
+    super(SESSION_CLOSED, new Data(id, reason));
+  }
+
+  public static EventListener<Data> listener(Consumer<Data> handler) {
     Require.nonNull("Handler", handler);
 
-    return new EventListener<>(SESSION_CLOSED, SessionId.class, handler);
+    return new EventListener<>(SESSION_CLOSED, Data.class, handler);
+  }
+
+  public static class Data {
+    private final SessionId sessionId;
+    private final String reason;
+
+    private Data(SessionId sessionId, String reason) {
+      this.sessionId = Require.nonNull("Session id", sessionId);
+      this.reason = Objects.requireNonNullElse(reason, DEFAULT_REASON);
+    }
+
+    public SessionId getSessionId() {
+      return sessionId;
+    }
+
+    public String getReason() {
+      return reason;
+    }
   }
 }

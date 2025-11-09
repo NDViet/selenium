@@ -85,7 +85,7 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
     this.connection = jdbcConnection;
     this.bus.addListener(
         SessionClosedEvent.listener(
-            id -> this.remove(id, REASON_SESSION_CLOSED_EVENT, Instant.now())));
+            event -> this.remove(event.getSessionId(), event.getReason(), Instant.now())));
 
     this.bus.addListener(
         NodeRemovedEvent.listener(

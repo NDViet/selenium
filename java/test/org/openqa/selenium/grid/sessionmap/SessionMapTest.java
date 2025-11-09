@@ -156,5 +156,37 @@ class SessionMapTest {
             return true;
           }
         });
+
+    List<SessionMetadata> history =
+        local.getSessionHistory(
+            Optional.of(expected.getId()), Optional.empty(), Optional.empty(), Optional.empty());
+
+    assertThat(history).hasSize(1);
+    assertThat(history.get(0).getCloseReason()).isEqualTo(SessionMap.REASON_SESSION_CLOSED_EVENT);
+  }
+
+  @Test
+  void shouldRecordCloseReasonFromSessionClosedEvent() {
+    local.add(expected);
+
+    bus.fire(new SessionClosedEvent(expected.getId(), SessionMap.REASON_SESSION_TIMEOUT));
+
+    Wait<SessionMap> wait = new FluentWait<>(local).withTimeout(ofSeconds(2));
+    wait.until(
+        sessions -> {
+          try {
+            sessions.get(expected.getId());
+            return false;
+          } catch (NoSuchSessionException e) {
+            return true;
+          }
+        });
+
+    List<SessionMetadata> history =
+        local.getSessionHistory(
+            Optional.of(expected.getId()), Optional.empty(), Optional.empty(), Optional.empty());
+
+    assertThat(history).hasSize(1);
+    assertThat(history.get(0).getCloseReason()).isEqualTo(SessionMap.REASON_SESSION_TIMEOUT);
   }
 }

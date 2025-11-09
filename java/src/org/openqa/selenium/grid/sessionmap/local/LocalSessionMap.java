@@ -62,7 +62,8 @@ public class LocalSessionMap extends SessionMap {
     this.bus = Require.nonNull("Event bus", bus);
 
     bus.addListener(
-        SessionClosedEvent.listener(id -> remove(id, REASON_SESSION_CLOSED_EVENT)));
+        SessionClosedEvent.listener(
+            event -> remove(event.getSessionId(), event.getReason(), Instant.now())));
 
     bus.addListener(
         NodeRemovedEvent.listener(

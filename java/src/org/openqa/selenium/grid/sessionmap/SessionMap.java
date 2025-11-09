@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import org.openqa.selenium.NoSuchSessionException;
+import org.openqa.selenium.grid.data.SessionClosedEvent;
 import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.internal.Require;
 import org.openqa.selenium.json.Json;
@@ -85,7 +86,8 @@ public abstract class SessionMap implements HasReadyState, Routable {
   private final CopyOnWriteArrayList<SessionMetadata> sessionHistory = new CopyOnWriteArrayList<>();
 
   public static final String REASON_HTTP_REQUEST = "http-request";
-  public static final String REASON_SESSION_CLOSED_EVENT = "session-closed-event";
+  public static final String REASON_SESSION_CLOSED_EVENT = SessionClosedEvent.DEFAULT_REASON;
+  public static final String REASON_SESSION_TIMEOUT = "session-timeout";
   public static final String REASON_NODE_REMOVED = "node-removed";
   public static final String REASON_NODE_RESTARTED = "node-restarted";
   public static final String REASON_UNKNOWN = "unknown";

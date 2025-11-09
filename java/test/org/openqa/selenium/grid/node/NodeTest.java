@@ -476,7 +476,7 @@ class NodeTest {
 
   @Test
   void quittingASessionShouldCauseASessionClosedEventToBeFired() {
-    AtomicReference<Object> obj = new AtomicReference<>();
+    AtomicReference<SessionClosedEvent.Data> obj = new AtomicReference<>();
     bus.addListener(SessionClosedEvent.listener(obj::set));
 
     Either<WebDriverException, CreateSessionResponse> response =
@@ -488,7 +488,8 @@ class NodeTest {
     // Because we're using the event bus, we can't expect the event to fire instantly. We're using
     // an inproc bus, so in reality it's reasonable to expect the event to fire synchronously, but
     // let's play it safe.
-    Wait<AtomicReference<Object>> wait = new FluentWait<>(obj).withTimeout(ofSeconds(2));
+    Wait<AtomicReference<SessionClosedEvent.Data>> wait =
+        new FluentWait<>(obj).withTimeout(ofSeconds(2));
     wait.until(ref -> ref.get() != null);
   }
 
