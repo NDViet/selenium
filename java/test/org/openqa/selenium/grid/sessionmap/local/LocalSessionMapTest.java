@@ -97,7 +97,25 @@ class LocalSessionMapTest {
 
     sessionMap.remove(sessionId);
 
-    assertThatThrownBy(() -> sessionMap.get(sessionId)).isInstanceOf(NoSuchSessionException.class);
+    assertThatThrownBy(() -> sessionMap.get(sessionId))
+        .isInstanceOf(NoSuchSessionException.class)
+        .hasMessageContaining(
+            "Reason: Session removal requested through the SessionMap API.");
+  }
+
+  @Test
+  void shouldReportReasonWhenSessionRemovedViaNodeEvent() {
+    URI nodeUri = URI.create("http://localhost:5555");
+    SessionId sessionId = new SessionId("session-to-remove");
+    Session session = createSession(sessionId, nodeUri);
+    sessionMap.add(session);
+
+    NodeStatus nodeStatus = createNodeStatus(nodeUri);
+    eventBus.fire(new NodeRemovedEvent(nodeStatus));
+
+    assertThatThrownBy(() -> sessionMap.get(sessionId))
+        .isInstanceOf(NoSuchSessionException.class)
+        .hasMessageContaining("Node http://localhost:5555 was removed from the grid.");
   }
 
   @Test
