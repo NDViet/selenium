@@ -31,6 +31,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Logger;
 import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.ImmutableCapabilities;
@@ -81,7 +83,9 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
     this.bus = Require.nonNull("Event bus", bus);
 
     this.connection = jdbcConnection;
-    this.bus.addListener(SessionClosedEvent.listener(this::remove));
+    this.bus.addListener(
+        SessionClosedEvent.listener(
+            event -> this.remove(event.getSessionId(), event.getReason(), Instant.now())));
 
     this.bus.addListener(
         NodeRemovedEvent.listener(
@@ -89,11 +93,13 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
                 nodeStatus.getSlots().stream()
                     .filter(slot -> slot.getSession() != null)
                     .map(slot -> slot.getSession().getId())
-                    .forEach(this::remove)));
+                    .forEach(
+                        sessionId -> this.remove(sessionId, REASON_NODE_REMOVED, Instant.now()))));
 
     bus.addListener(
         NodeRestartedEvent.listener(
-            previousNodeStatus -> this.removeByUri(previousNodeStatus.getExternalUri())));
+            previousNodeStatus ->
+                this.removeByUri(previousNodeStatus.getExternalUri(), REASON_NODE_RESTARTED)));
   }
 
   public static SessionMap create(Config config) {
@@ -169,6 +175,7 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
         int rowCount = statement.executeUpdate();
         attributeMap.put("rows.added", rowCount);
         span.addEvent("Inserted into the database", attributeMap);
+        trackSession(session);
         return rowCount >= 1;
       } catch (SQLException e) {
         span.setAttribute("error", true);
@@ -286,7 +293,7 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
   }
 
   @Override
-  public void remove(SessionId id) {
+  public void remove(SessionId id, String reason, Instant endedAt) {
     Require.nonNull("Session ID", id);
     try (Span span =
         tracer.getCurrentContext().createSpan("DELETE from  sessions_map where session_ids = ?")) {
@@ -310,6 +317,7 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
         int rowCount = statement.executeUpdate();
         attributeMap.put("rows.deleted", rowCount);
         span.addEvent("Deleted session from the database", attributeMap);
+        recordSessionClosed(id, null, endedAt, reason);
 
       } catch (SQLException e) {
         span.setAttribute("error", true);
@@ -324,11 +332,34 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
     }
   }
 
-  public void removeByUri(URI sessionUri) {
+  public void removeByUri(URI sessionUri, String reason) {
     Require.nonNull("Session URI", sessionUri);
     try (Span span =
         tracer.getCurrentContext().createSpan("DELETE from  sessions_map where session_uri = ?")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
+
+      List<SessionId> sessionIds = new ArrayList<>();
+      try (PreparedStatement selectStatement =
+              connection.prepareStatement(
+                  String.format(
+                      "select %1$s from %2$s where %3$s = ?",
+                      SESSION_ID_COL, TABLE_NAME, SESSION_URI_COL))) {
+        selectStatement.setString(1, sessionUri.toString());
+        try (ResultSet resultSet = selectStatement.executeQuery()) {
+          while (resultSet.next()) {
+            sessionIds.add(new SessionId(resultSet.getString(SESSION_ID_COL)));
+          }
+        }
+      } catch (SQLException e) {
+        span.setAttribute("error", true);
+        span.setStatus(Status.CANCELLED);
+        EXCEPTION.accept(attributeMap, e);
+        attributeMap.put(
+            AttributeKey.EXCEPTION_MESSAGE.getKey(),
+            "Unable to read session ids from the database: " + e.getMessage());
+        span.addEvent(AttributeKey.EXCEPTION_EVENT.getKey(), attributeMap);
+        throw new JdbcException(e.getMessage());
+      }
 
       try (PreparedStatement statement =
           connection.prepareStatement(
@@ -344,6 +375,8 @@ public class JdbcBackedSessionMap extends SessionMap implements Closeable {
         int rowCount = statement.executeUpdate();
         attributeMap.put("rows.deleted", rowCount);
         span.addEvent("Deleted session from the database", attributeMap);
+        Instant endedAt = Instant.now();
+        sessionIds.forEach(sessionId -> recordSessionClosed(sessionId, null, endedAt, reason));
 
       } catch (SQLException e) {
         span.setAttribute("error", true);

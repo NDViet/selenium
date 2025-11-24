@@ -98,6 +98,7 @@ import org.openqa.selenium.grid.node.SessionFactory;
 import org.openqa.selenium.grid.node.config.NodeOptions;
 import org.openqa.selenium.grid.node.docker.DockerSession;
 import org.openqa.selenium.grid.security.Secret;
+import org.openqa.selenium.grid.sessionmap.SessionMap;
 import org.openqa.selenium.internal.Debug;
 import org.openqa.selenium.internal.Either;
 import org.openqa.selenium.internal.Require;
@@ -323,6 +324,11 @@ public class LocalNode extends Node implements Closeable {
         attributeMap.put("session.id", id.toString());
         attributeMap.put("session.timeout_in_seconds", getSessionTimeout().toSeconds());
         attributeMap.put("session.remove.cause", cause.name());
+        String closeReason =
+            cause == RemovalCause.EXPIRED
+                ? SessionMap.REASON_SESSION_TIMEOUT
+                : SessionMap.REASON_SESSION_CLOSED_EVENT;
+        attributeMap.put("session.close.reason", closeReason);
         if (cause == RemovalCause.EXPIRED) {
           // Session is timing out, stopping it by sending a DELETE
           LOG.log(Level.INFO, () -> String.format("Session id %s timed out, stopping...", id));
@@ -344,7 +350,7 @@ public class LocalNode extends Node implements Closeable {
           }
         }
         // Attempt to stop the session
-        slot.stop();
+        slot.stop(closeReason);
         // Decrement pending sessions if Node is draining
         if (this.isDraining()) {
           int done = pendingSessions.decrementAndGet();

@@ -17,6 +17,7 @@
 
 package org.openqa.selenium.grid.sessionmap;
 
+import java.time.Instant;
 import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.remote.SessionId;
@@ -39,7 +40,7 @@ public class NullSessionMap extends SessionMap {
   }
 
   @Override
-  public void remove(SessionId id) {
+  public void remove(SessionId id, String reason, Instant endedAt) {
     // no-op
   }
 

@@ -103,11 +103,12 @@ public class SessionSlot
     return currentSession;
   }
 
-  public void stop() {
+  public void stop(String reason) {
     if (isAvailable()) {
       return;
     }
 
+    String closeReason = Require.nonNull("Session close reason", reason);
     SessionId id = currentSession.getId();
     try {
       currentSession.stop();
@@ -117,8 +118,8 @@ public class SessionSlot
     currentSession = null;
     connectionCounter.set(0);
     release();
-    bus.fire(new SessionClosedEvent(id));
-    LOG.info(String.format("Stopping session %s", id));
+    bus.fire(new SessionClosedEvent(id, closeReason));
+    LOG.info(String.format("Stopping session %s (reason: %s)", id, closeReason));
   }
 
   @Override

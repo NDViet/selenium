@@ -21,6 +21,7 @@ import static org.openqa.selenium.remote.RemoteTags.SESSION_ID;
 import static org.openqa.selenium.remote.RemoteTags.SESSION_ID_EVENT;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -60,18 +61,24 @@ public class LocalSessionMap extends SessionMap {
 
     this.bus = Require.nonNull("Event bus", bus);
 
-    bus.addListener(SessionClosedEvent.listener(this::remove));
+    bus.addListener(
+        SessionClosedEvent.listener(
+            event -> remove(event.getSessionId(), event.getReason(), Instant.now())));
 
     bus.addListener(
         NodeRemovedEvent.listener(
             nodeStatus -> {
-              batchRemoveByUri(nodeStatus.getExternalUri(), NodeRemovedEvent.class);
+              batchRemoveByUri(
+                  nodeStatus.getExternalUri(), NodeRemovedEvent.class, REASON_NODE_REMOVED);
             }));
 
     bus.addListener(
         NodeRestartedEvent.listener(
             previousNodeStatus -> {
-              batchRemoveByUri(previousNodeStatus.getExternalUri(), NodeRestartedEvent.class);
+              batchRemoveByUri(
+                  previousNodeStatus.getExternalUri(),
+                  NodeRestartedEvent.class,
+                  REASON_NODE_RESTARTED);
             }));
   }
 
@@ -93,6 +100,7 @@ public class LocalSessionMap extends SessionMap {
 
     SessionId id = session.getId();
     knownSessions.put(id, session);
+    trackSession(session);
 
     try (Span span = tracer.getCurrentContext().createSpan("local_sessionmap.add")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
@@ -122,10 +130,11 @@ public class LocalSessionMap extends SessionMap {
   }
 
   @Override
-  public void remove(SessionId id) {
+  public void remove(SessionId id, String reason, Instant endedAt) {
     Require.nonNull("Session ID", id);
 
     Session removedSession = knownSessions.remove(id);
+    recordSessionClosed(id, removedSession, endedAt, reason);
 
     try (Span span = tracer.getCurrentContext().createSpan("local_sessionmap.remove")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
@@ -135,22 +144,26 @@ public class LocalSessionMap extends SessionMap {
 
       String sessionDeletedMessage =
           String.format(
-              "Deleted session from local Session Map, Id: %s, Node: %s",
+              "Deleted session from local Session Map, Id: %s, Node: %s, Reason: %s",
               id,
-              removedSession != null ? String.valueOf(removedSession.getUri()) : "unidentified");
+              removedSession != null ? String.valueOf(removedSession.getUri()) : "unidentified",
+              reason);
       span.addEvent(sessionDeletedMessage, attributeMap);
       LOG.info(sessionDeletedMessage);
     }
   }
 
-  private void batchRemoveByUri(URI externalUri, Class<? extends Event> eventClass) {
+  private void batchRemoveByUri(
+      URI externalUri, Class<? extends Event> eventClass, String reason) {
     Set<SessionId> sessionsToRemove = knownSessions.getSessionsByUri(externalUri);
 
     if (sessionsToRemove.isEmpty()) {
       return; // Early return for empty operations - no tracing overhead
     }
 
-    knownSessions.batchRemove(sessionsToRemove);
+    Map<SessionId, Session> removed = knownSessions.batchRemove(sessionsToRemove);
+    Instant endedAt = Instant.now();
+    removed.forEach((sessionId, session) -> recordSessionClosed(sessionId, session, endedAt, reason));
 
     try (Span span = tracer.getCurrentContext().createSpan("local_sessionmap.batch_remove")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
@@ -206,13 +219,17 @@ public class LocalSessionMap extends SessionMap {
       }
     }
 
-    public void batchRemove(Set<SessionId> sessionIds) {
+    public Map<SessionId, Session> batchRemove(Set<SessionId> sessionIds) {
       synchronized (coordinationLock) {
         Map<URI, Set<SessionId>> uriToSessionIds = new HashMap<>();
+        Map<SessionId, Session> removedSessions = new HashMap<>();
 
         // Single loop: remove sessions and collect URI mappings in one pass
         for (SessionId id : sessionIds) {
           Session session = sessions.remove(id);
+          if (session != null) {
+            removedSessions.put(id, session);
+          }
           if (session != null && session.getUri() != null) {
             uriToSessionIds.computeIfAbsent(session.getUri(), k -> new HashSet<>()).add(id);
           }
@@ -222,6 +239,8 @@ public class LocalSessionMap extends SessionMap {
         for (Map.Entry<URI, Set<SessionId>> entry : uriToSessionIds.entrySet()) {
           cleanupUriIndex(entry.getKey(), entry.getValue());
         }
+
+        return removedSessions;
       }
     }
 
