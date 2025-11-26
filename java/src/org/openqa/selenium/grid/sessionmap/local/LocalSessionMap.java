@@ -21,6 +21,8 @@ import static org.openqa.selenium.remote.RemoteTags.SESSION_ID;
 import static org.openqa.selenium.remote.RemoteTags.SESSION_ID_EVENT;
 
 import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -52,26 +54,36 @@ public class LocalSessionMap extends SessionMap {
 
   private static final Logger LOG = Logger.getLogger(LocalSessionMap.class.getName());
 
+  private static final Duration REMOVAL_RETENTION = Duration.ofHours(1);
+
   private final EventBus bus;
   private final IndexedSessionMap knownSessions = new IndexedSessionMap();
+  private final ConcurrentMap<SessionId, SessionRemovalInfo> removalHistory =
+      new ConcurrentHashMap<>();
 
   public LocalSessionMap(Tracer tracer, EventBus bus) {
     super(tracer);
 
     this.bus = Require.nonNull("Event bus", bus);
 
-    bus.addListener(SessionClosedEvent.listener(this::remove));
+    bus.addListener(
+        SessionClosedEvent.listener(
+            id -> removeWithCause(id, RemovalCause.SESSION_CLOSED, null)));
 
     bus.addListener(
         NodeRemovedEvent.listener(
             nodeStatus -> {
-              batchRemoveByUri(nodeStatus.getExternalUri(), NodeRemovedEvent.class);
+              batchRemoveByUri(
+                  nodeStatus.getExternalUri(), NodeRemovedEvent.class, RemovalCause.NODE_REMOVED);
             }));
 
     bus.addListener(
         NodeRestartedEvent.listener(
             previousNodeStatus -> {
-              batchRemoveByUri(previousNodeStatus.getExternalUri(), NodeRestartedEvent.class);
+              batchRemoveByUri(
+                  previousNodeStatus.getExternalUri(),
+                  NodeRestartedEvent.class,
+                  RemovalCause.NODE_RESTARTED);
             }));
   }
 
@@ -93,6 +105,7 @@ public class LocalSessionMap extends SessionMap {
 
     SessionId id = session.getId();
     knownSessions.put(id, session);
+    removalHistory.remove(id);
 
     try (Span span = tracer.getCurrentContext().createSpan("local_sessionmap.add")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
@@ -116,6 +129,19 @@ public class LocalSessionMap extends SessionMap {
 
     Session session = knownSessions.get(id);
     if (session == null) {
+      SessionRemovalInfo removalInfo = removalHistory.get(id);
+      if (removalInfo != null) {
+        Instant now = Instant.now();
+        if (removalInfo.isExpired(now)) {
+          removalHistory.remove(id, removalInfo);
+        } else {
+          long secondsAgo = Math.max(0, removalInfo.secondsSince(now));
+          throw new NoSuchSessionException(
+              String.format(
+                  "Session ID: %s was closed %d second(s) ago. Reason: %s",
+                  id, secondsAgo, removalInfo.reason));
+        }
+      }
       throw new NoSuchSessionException("Unable to find session with ID: " + id);
     }
     return session;
@@ -123,9 +149,15 @@ public class LocalSessionMap extends SessionMap {
 
   @Override
   public void remove(SessionId id) {
+    removeWithCause(
+        id, RemovalCause.EXPLICIT_REMOVE, "Session removal requested through the SessionMap API.");
+  }
+
+  private void removeWithCause(SessionId id, RemovalCause cause, String detail) {
     Require.nonNull("Session ID", id);
 
     Session removedSession = knownSessions.remove(id);
+    recordRemoval(id, removedSession, cause, detail);
 
     try (Span span = tracer.getCurrentContext().createSpan("local_sessionmap.remove")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
@@ -135,37 +167,60 @@ public class LocalSessionMap extends SessionMap {
 
       String sessionDeletedMessage =
           String.format(
-              "Deleted session from local Session Map, Id: %s, Node: %s",
+              "Deleted session from local Session Map, Id: %s, Node: %s (cause: %s)",
               id,
-              removedSession != null ? String.valueOf(removedSession.getUri()) : "unidentified");
+              removedSession != null ? String.valueOf(removedSession.getUri()) : "unidentified",
+              detail != null ? detail : cause.defaultDescription);
       span.addEvent(sessionDeletedMessage, attributeMap);
       LOG.info(sessionDeletedMessage);
     }
   }
 
-  private void batchRemoveByUri(URI externalUri, Class<? extends Event> eventClass) {
+  private void batchRemoveByUri(
+      URI externalUri, Class<? extends Event> eventClass, RemovalCause cause) {
     Set<SessionId> sessionsToRemove = knownSessions.getSessionsByUri(externalUri);
 
     if (sessionsToRemove.isEmpty()) {
       return; // Early return for empty operations - no tracing overhead
     }
 
-    knownSessions.batchRemove(sessionsToRemove);
+    Map<SessionId, Session> removedSessions = knownSessions.batchRemove(sessionsToRemove);
+
+    if (removedSessions.isEmpty()) {
+      return;
+    }
+
+    Instant removalInstant = Instant.now();
+    String reasonMessage = buildReasonMessage(cause, externalUri, eventClass);
+    removedSessions.forEach(
+        (sessionId, session) ->
+            recordRemoval(sessionId, session, cause, reasonMessage, removalInstant));
 
     try (Span span = tracer.getCurrentContext().createSpan("local_sessionmap.batch_remove")) {
       AttributeMap attributeMap = tracer.createAttributeMap();
       attributeMap.put(AttributeKey.LOGGER_CLASS.getKey(), getClass().getName());
       attributeMap.put("event.class", eventClass.getName());
       attributeMap.put("node.uri", externalUri.toString());
-      attributeMap.put("sessions.count", sessionsToRemove.size());
+      attributeMap.put("sessions.count", removedSessions.size());
 
       String batchRemoveMessage =
           String.format(
               "Batch removed %d sessions from local Session Map for Node %s (triggered by %s)",
-              sessionsToRemove.size(), externalUri, eventClass.getSimpleName());
+              removedSessions.size(), externalUri, eventClass.getSimpleName());
       span.addEvent(batchRemoveMessage, attributeMap);
       LOG.info(batchRemoveMessage);
     }
+  }
+
+  private String buildReasonMessage(
+      RemovalCause cause, URI externalUri, Class<? extends Event> eventClass) {
+    if (cause == RemovalCause.NODE_REMOVED) {
+      return String.format("Node %s was removed from the grid.", externalUri);
+    }
+    if (cause == RemovalCause.NODE_RESTARTED) {
+      return String.format("Node %s was restarted.", externalUri);
+    }
+    return String.format("%s (triggered by %s)", cause.defaultDescription, eventClass.getSimpleName());
   }
 
   private static class IndexedSessionMap {
@@ -206,15 +261,19 @@ public class LocalSessionMap extends SessionMap {
       }
     }
 
-    public void batchRemove(Set<SessionId> sessionIds) {
+    public Map<SessionId, Session> batchRemove(Set<SessionId> sessionIds) {
       synchronized (coordinationLock) {
         Map<URI, Set<SessionId>> uriToSessionIds = new HashMap<>();
+        Map<SessionId, Session> removedSessions = new HashMap<>();
 
         // Single loop: remove sessions and collect URI mappings in one pass
         for (SessionId id : sessionIds) {
           Session session = sessions.remove(id);
-          if (session != null && session.getUri() != null) {
-            uriToSessionIds.computeIfAbsent(session.getUri(), k -> new HashSet<>()).add(id);
+          if (session != null) {
+            removedSessions.put(id, session);
+            if (session.getUri() != null) {
+              uriToSessionIds.computeIfAbsent(session.getUri(), k -> new HashSet<>()).add(id);
+            }
           }
         }
 
@@ -222,6 +281,8 @@ public class LocalSessionMap extends SessionMap {
         for (Map.Entry<URI, Set<SessionId>> entry : uriToSessionIds.entrySet()) {
           cleanupUriIndex(entry.getKey(), entry.getValue());
         }
+
+        return removedSessions;
       }
     }
 
@@ -269,6 +330,56 @@ public class LocalSessionMap extends SessionMap {
         sessions.clear();
         sessionsByUri.clear();
       }
+    }
+  }
+
+  private void recordRemoval(
+      SessionId id, Session removedSession, RemovalCause cause, String detail) {
+    recordRemoval(id, removedSession, cause, detail, Instant.now());
+  }
+
+  private void recordRemoval(
+      SessionId id,
+      Session removedSession,
+      RemovalCause cause,
+      String detail,
+      Instant removedAt) {
+    if (removedSession == null) {
+      return;
+    }
+
+    String reason = (detail != null && !detail.isBlank()) ? detail : cause.defaultDescription;
+    removalHistory.put(id, new SessionRemovalInfo(removedAt, reason));
+  }
+
+  private enum RemovalCause {
+    EXPLICIT_REMOVE("Session was explicitly removed from the session map."),
+    SESSION_CLOSED("Session closed event received from the node."),
+    NODE_REMOVED("Node was removed from the grid."),
+    NODE_RESTARTED("Node was restarted.");
+
+    private final String defaultDescription;
+
+    RemovalCause(String defaultDescription) {
+      this.defaultDescription = defaultDescription;
+    }
+  }
+
+  private static class SessionRemovalInfo {
+    private final Instant removedAt;
+    private final String reason;
+
+    private SessionRemovalInfo(Instant removedAt, String reason) {
+      this.removedAt = removedAt;
+      this.reason = reason;
+    }
+
+    private boolean isExpired(Instant reference) {
+      return removedAt.plus(REMOVAL_RETENTION).isBefore(reference);
+    }
+
+    private long secondsSince(Instant reference) {
+      return Duration.between(removedAt, reference).getSeconds();
     }
   }
 }
